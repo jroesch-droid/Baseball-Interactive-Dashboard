@@ -399,7 +399,7 @@
       </div>
       <div class="card">
         <h3>Tracked Roster</h3>
-        <div class="hint">Click a column to sort. Gold cells mark the top value in that column. Add players to <span style="color:var(--gold)">KEY_PLAYERS</span> in the pipeline to grow this table.</div>
+        <div class="hint">Click a column to sort. Gold cells mark the top value in that column. The full 26-man active roster is pulled automatically every night — trades and call-ups appear here on their own.</div>
         <div class="table-scroll">
           <table id="rosterTable" aria-label="Tracked roster statistics">
             <thead><tr id="rosterHead"></tr></thead>
@@ -469,11 +469,25 @@ function setStatus(kind, text) {
 }
 
 function playersList(data) {
+  // Schema v2: players live under data.player_deep_dive, keyed by name, with
+  // per-role statcast blocks ({ summary, events }). Two-way players produce
+  // one entry per role so every chart can treat entries uniformly.
   const out = [];
-  const players = (data && data.players) || {};
-  for (const [name, p] of Object.entries(players)) {
-    if (!p || p.error) continue;
-    out.push({ name, role: p.role || "batter", summary: p.summary || {}, events: p.recent_events || [] });
+  const deepDive = (data && data.player_deep_dive) || {};
+  for (const [name, prof] of Object.entries(deepDive)) {
+    if (!prof) continue;
+    const roles = Array.isArray(prof.roles) && prof.roles.length ? prof.roles : ["batter"];
+    for (const role of roles) {
+      const block = (prof.statcast || {})[role] || {};
+      if (block.error) continue;
+      out.push({
+        name: roles.length > 1 ? name + (role === "batter" ? " (bat)" : " (pit)") : name,
+        role,
+        position: prof.position || null,
+        summary: block.summary || {},
+        events: block.events || [],
+      });
+    }
   }
   return out;
 }
@@ -558,7 +572,8 @@ const ordinal = (n) => {
 
 function renderKPIs(data) {
   // Record / Win% / Rank — B-Ref tables arrive already sorted by the pipeline.
-  const st = findPadresStandingsRow(data.standings_nl_west);
+  const teamStats = (data && data.team_stats) || {};
+  const st = findPadresStandingsRow(teamStats.standings_nl_west);
   if (st.row) {
     const w = num(st.row.W), l = num(st.row.L);
     const pct = num(st.row["W-L%"]) != null ? num(st.row["W-L%"])
@@ -576,8 +591,8 @@ function renderKPIs(data) {
   }
 
   // Run differential = team runs scored (FanGraphs batting) − runs allowed (pitching)
-  const bat = (data.team_batting || [])[0] || {};
-  const pit = (data.team_pitching || [])[0] || {};
+  const bat = (teamStats.batting || [])[0] || {};
+  const pit = (teamStats.pitching || [])[0] || {};
   const rs = num(bat.R), ra = num(pit.R);
   if (rs != null && ra != null) {
     const diff = rs - ra;
@@ -812,7 +827,7 @@ function renderRoster(data) {
   });
 
   const rows = ps.map(p => {
-    const cells = { name: p.name, role: p.role };
+    const cells = { name: p.name, role: p.role, position: p.position };
     for (const c of ROSTER_COLS) if (c.get) cells[c.key] = c.get(p);
     return cells;
   });
@@ -835,7 +850,7 @@ function renderRoster(data) {
   }
 
   $("rosterBody").innerHTML = rows.map(r =>
-    "<tr><td class=\"name\">" + esc(r.name) + '<span class="role-tag">' + esc(r.role) + "</span></td>" +
+    "<tr><td class=\"name\">" + esc(r.name) + '<span class="role-tag">' + esc(r.position || r.role) + "</span></td>" +
     ROSTER_COLS.filter(c => c.numeric).map(c => {
       const v = r[c.key];
       const isTop = v != null && best[c.key] != null && v === best[c.key];
@@ -911,27 +926,43 @@ function makeSampleData() {
     pitch_mix: { FF: 120, SL: 90 },
   };
 
-  const mk = (name, role, bias) => {
+  const mk = (name, role, position, bias) => {
     const events = role === "batter" ? batterEvents(bias || 0) : pitcherEvents();
-    return [name, { role, mlbam_id: 0, summary: summarize(events, role), recent_events: events }];
+    return [name, {
+      mlbam_id: 0,
+      position,
+      position_type: role === "pitcher" ? "Pitcher" : "Infielder",
+      roles: [role],
+      game_logs: {},
+      statcast: { [role]: { summary: summarize(events, role), events } },
+    }];
   };
 
+  const deepDive = Object.fromEntries([
+    mk("Sample Batter A", "batter", "3B", 4),
+    mk("Sample Batter B", "batter", "SS", 0),
+    mk("Sample Pitcher C", "pitcher", "P"),
+  ]);
+
   return {
-    meta: { team: "San Diego Padres", season: 2026, generated_at_utc: null, sources: ["sample generator"] },
-    standings_nl_west: [
-      { Tm: "Sample Team One", W: 52, L: 34, "W-L%": 0.605, GB: "--" },
-      { Tm: "San Diego Padres", W: 49, L: 37, "W-L%": 0.570, GB: "3.0" },
-      { Tm: "Sample Team Three", W: 45, L: 41, "W-L%": 0.523, GB: "7.0" },
-      { Tm: "Sample Team Four", W: 40, L: 46, "W-L%": 0.465, GB: "12.0" },
-      { Tm: "Sample Team Five", W: 33, L: 53, "W-L%": 0.384, GB: "19.0" },
-    ],
-    team_batting: [{ Team: "SDP", R: 412, WAR: 15.2 }],
-    team_pitching: [{ Team: "SDP", R: 371, WAR: 9.8 }],
-    players: Object.fromEntries([
-      mk("Sample Batter A", "batter", 4),
-      mk("Sample Batter B", "batter", 0),
-      mk("Sample Pitcher C", "pitcher"),
-    ]),
+    meta: { team: "San Diego Padres", season: 2026, generated_at_utc: null, schema_version: 2, sources: ["sample generator"] },
+    team_stats: {
+      standings_nl_west: [
+        { Tm: "Sample Team One", W: 52, L: 34, "W-L%": 0.605, GB: "--" },
+        { Tm: "San Diego Padres", W: 49, L: 37, "W-L%": 0.570, GB: "3.0" },
+        { Tm: "Sample Team Three", W: 45, L: 41, "W-L%": 0.523, GB: "7.0" },
+        { Tm: "Sample Team Four", W: 40, L: 46, "W-L%": 0.465, GB: "12.0" },
+        { Tm: "Sample Team Five", W: 33, L: 53, "W-L%": 0.384, GB: "19.0" },
+      ],
+      batting: [{ Team: "SDP", R: 412, WAR: 15.2 }],
+      pitching: [{ Team: "SDP", R: 371, WAR: 9.8 }],
+    },
+    roster: Object.entries(deepDive).map(([name, p]) => ({
+      name, mlbam_id: p.mlbam_id, position: p.position,
+      position_type: p.position_type, jersey_number: null,
+      roles: p.roles, season_stats: {},
+    })),
+    player_deep_dive: deepDive,
   };
 }
 
