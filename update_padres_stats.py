@@ -3,6 +3,19 @@ update_padres_stats.py  (v3 — real analytics feed)
 ===================================================
 Nightly data pipeline for the Padres front-office dashboard.
 
+What changed in v3.1
+--------------------
+GitHub-hosted runners were 403-blocked by Spotrac and FanGraphs (and by
+the Baseball-Reference/FanGraphs paths inside pybaseball's team-level
+functions). v3.1 therefore:
+  * adds salaries.json (committed, front-office maintained) as the
+    PRIMARY salary source, with the Spotrac scrape kept as secondary;
+  * adds stuffplus.csv (committed) as the PRIMARY Stuff+ source and
+    removes the Playwright tier entirely;
+  * moves standings and team batting/pitching to the MLB StatsAPI —
+    the same host as the roster fetch, which succeeds from Actions;
+  * extends last-known-good preservation to standings and team stats.
+
 What changed vs. v2
 -------------------
 The frontend's placeholder MODELS are replaced by real fetched inputs:
@@ -14,12 +27,11 @@ The frontend's placeholder MODELS are replaced by real fetched inputs:
    and treat their figures as estimates — confirm decision-grade
    numbers against official/primary sources.
 
-2. STUFF+ / LOCATION+ / PITCHING+ — from the FanGraphs leaderboards,
-   fetched in three tiers (most robust first):
+2. STUFF+ / LOCATION+ / PITCHING+ — fetched in tiers (v3.1 order):
+     T0: committed stuffplus.csv (PRIMARY — e.g. a FanGraphs member
+         CSV export; verify membership terms permit this use)
      T1: pybaseball.pitching_stats() — FG leaderboard via library
      T2: FanGraphs' own JSON API (the endpoint their site calls)
-     T3: Playwright headless-browser scrape (heavy; last resort;
-         requires `playwright install chromium` in CI)
    Column/field names are matched flexibly because FG's exact API
    field names for the Stuff+ model are not guaranteed stable.
 
@@ -105,11 +117,8 @@ except ImportError:  # keep the core pipeline alive without them
 
 from pybaseball import (
     cache,
-    standings,
     statcast_batter,
     statcast_pitcher,
-    team_batting,
-    team_pitching,
 )
 try:
     from pybaseball import pitching_stats  # FG leaderboards (tier 1)
@@ -130,8 +139,22 @@ HTTP_TIMEOUT_S = 30
 SAVANT_DELAY_S = 1.0
 EVENT_ROW_CAP = 300
 
-# Spotrac page. VERIFY: URL pattern has changed across site redesigns;
-# adjust here if the scrape logs an empty result.
+# v3.1 SOURCE STRATEGY (after observing 403 blocks from GitHub-hosted
+# runners on both Spotrac and FanGraphs):
+#   salaries: committed salaries.json (front-office maintained) is the
+#             PRIMARY source; the Spotrac scrape is a secondary attempt
+#             kept for environments where it isn't blocked.
+#   stuff+:   committed stuffplus.csv (e.g. a FanGraphs member CSV
+#             export — verify your membership terms permit this use)
+#             is PRIMARY; the pybaseball / FG-API attempts are
+#             secondary. The Playwright tier was removed.
+#   team stats & standings: MLB StatsAPI (same host as the roster
+#             fetch, which succeeds from Actions runners).
+SALARIES_FILE = "salaries.json"
+STUFFPLUS_CSV = "stuffplus.csv"
+
+# Spotrac page (secondary source; commonly 403-blocked from datacenter
+# IPs). VERIFY the URL pattern after any Spotrac redesign.
 SPOTRAC_URL = "https://www.spotrac.com/mlb/san-diego-padres/payroll/"
 SCRAPE_UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
              "(KHTML, like Gecko) Chrome/126.0 Safari/537.36 "
@@ -377,8 +400,72 @@ def fetch_salaries_spotrac(year: int) -> dict:
     }
 
 
+def load_manual_salaries(year: int) -> dict:
+    """
+    PRIMARY salary source: a committed salaries.json maintained by the
+    front office. Expected shape:
+
+        { "source": "manual — front office verified",
+          "as_of": "2026-07-07",
+          "players": { "<Exact Roster Name>": 18500000, ... } }
+
+    A flat {name: value} file (no wrapper) is also accepted. Values are
+    USD integers; as a convenience, values under 1000 are interpreted
+    as $M (e.g. 18.5 -> 18,500,000). Names are matched to the roster
+    via the same normalization as every other source, so accents and
+    Jr/Sr suffixes are forgiving.
+    """
+    try:
+        with open(SALARIES_FILE, encoding="utf-8") as f:
+            raw = json.load(f)
+    except FileNotFoundError:
+        log.info("salaries: no %s in repo — trying scrape next.", SALARIES_FILE)
+        return {}
+    except Exception as exc:  # noqa: BLE001
+        log.error("salaries: %s unreadable (%s) — trying scrape next.",
+                  SALARIES_FILE, exc)
+        return {}
+
+    body = raw.get("players") if isinstance(raw, dict) and "players" in raw else raw
+    if not isinstance(body, dict):
+        log.error("salaries: %s has no usable 'players' mapping.", SALARIES_FILE)
+        return {}
+    players: dict[str, int] = {}
+    for name, v in body.items():
+        if str(name).startswith("_"):
+            continue                       # allow "_comment"-style keys
+        try:
+            x = float(v)
+        except (TypeError, ValueError):
+            continue
+        players[str(name)] = int(round(x * 1e6)) if x < 1000 else int(round(x))
+    if not players:
+        log.info("salaries: %s present but players{} is empty — "
+                 "trying scrape next.", SALARIES_FILE)
+        return {}
+    log.info("salaries: loaded %d players from committed %s.",
+             len(players), SALARIES_FILE)
+    return {
+        "source": (raw.get("source") if isinstance(raw, dict) else None)
+                  or "manual (committed salaries.json)",
+        "as_of": (raw.get("as_of") if isinstance(raw, dict) else None) or now_iso(),
+        "season": year,
+        "note": "Front-office maintained figures from the committed salaries.json.",
+        "players": players,
+        "_norm_index": {normalize_name(n): n for n in players},
+    }
+
+
+def fetch_salaries(year: int) -> dict:
+    """Salary orchestrator: committed file first, then the Spotrac scrape."""
+    manual = load_manual_salaries(year)
+    if manual.get("players"):
+        return manual
+    return fetch_salaries_spotrac(year)
+
+
 # --------------------------------------------------------------------------- #
-# 2) Stuff+ / Location+ / Pitching+ — FanGraphs, three tiers
+# 2) Stuff+ / Location+ / Pitching+ — committed CSV, then FanGraphs tiers
 # --------------------------------------------------------------------------- #
 _STUFF_PATTERNS = {
     "stuff_plus":    re.compile(r"^(stuff\s*\+|sp_stuff|stf\+.*all)$", re.I),
@@ -444,7 +531,7 @@ def _stuff_tier2_fg_api(year: int) -> dict:
         "postseason": "", "sortdir": "default", "sortstat": "WAR",
     })
     try:
-        data = http_get_json(f"{FANGRAPHS_API}?{qs}",
+        data = http_get_json(f"{FANGRAPHS_API}?{qs}", retries=1,
                              headers={"Accept": "application/json"})
     except Exception as exc:  # noqa: BLE001
         log.warning("fangraphs: tier 2 request failed: %s", exc)
@@ -464,57 +551,42 @@ def _stuff_tier2_fg_api(year: int) -> dict:
     return _extract_stuff_columns(df, name_col, team_col)
 
 
-def _stuff_tier3_playwright(year: int) -> dict:
+def _stuff_tier0_csv(year: int) -> dict:
     """
-    Tier 3 (last resort, per request): headless Chromium via Playwright.
-    Requires `pip install playwright && playwright install chromium`.
-    Renders the FG Pitching+ leaderboard and reads the table DOM.
+    Tier 0 (PRIMARY): a committed stuffplus.csv — e.g. a CSV exported
+    from the FanGraphs leaderboard by a member and dropped in the repo.
+    Verify your FanGraphs membership terms permit this use. Columns are
+    matched with the same flexible patterns as the live tiers, so the
+    default export headers ("Name", "Team", "Stuff+", "Location+",
+    "Pitching+") work unmodified.
     """
-    try:
-        from playwright.sync_api import sync_playwright
-    except ImportError:
-        log.warning("fangraphs: tier 3 skipped — playwright not installed.")
+    if not os.path.exists(STUFFPLUS_CSV):
         return {}
-    log.info("fangraphs: tier 3 (Playwright) ...")
-    url = ("https://www.fangraphs.com/leaders/major-league?"
-           f"pos=all&stats=pit&lg=all&qual=0&type=36&season={year}"
-           f"&season1={year}&ind=0&team=0&pageitems=2000")
+    log.info("fangraphs: tier 0 (committed %s) ...", STUFFPLUS_CSV)
     try:
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=True)
-            page = browser.new_page(user_agent=SCRAPE_UA)
-            page.goto(url, timeout=60_000, wait_until="networkidle")
-            page.wait_for_selector("table", timeout=30_000)
-            html = page.content()
-            browser.close()
+        df = clean_dataframe(pd.read_csv(STUFFPLUS_CSV))
     except Exception as exc:  # noqa: BLE001
-        log.error("fangraphs: tier 3 browser run failed: %s", exc)
+        log.error("fangraphs: %s unreadable: %s", STUFFPLUS_CSV, exc)
         return {}
-    try:
-        tables = pd.read_html(html)
-    except ValueError:
+    if df.empty:
         return {}
-    for t in tables:
-        t = clean_dataframe(t)
-        if t.empty:
-            continue
-        name_col = next((c for c in t.columns if str(c).lower() == "name"), None)
-        if not name_col:
-            continue
-        team_col = next((c for c in t.columns if str(c).lower() == "team"), None)
-        got = _extract_stuff_columns(t, name_col, team_col)
-        if got:
-            return got
-    return {}
+    name_col = next((c for c in df.columns if str(c).strip().lower()
+                     in ("name", "player", "playername")), None)
+    if not name_col:
+        log.warning("fangraphs: %s has no Name column among %s",
+                    STUFFPLUS_CSV, list(df.columns)[:20])
+        return {}
+    team_col = next((c for c in df.columns if str(c).strip().lower() == "team"), None)
+    return _extract_stuff_columns(df, name_col, team_col)
 
 
 def fetch_stuff_plus(year: int, roster_norm: set[str]) -> dict:
     """Run the tiers; filter to current Padres by normalized name."""
     players: dict[str, dict] = {}
     tier_used = None
-    for tier_used, fn in (("pybaseball", _stuff_tier1_pybaseball),
-                          ("fg_json_api", _stuff_tier2_fg_api),
-                          ("playwright", _stuff_tier3_playwright)):
+    for tier_used, fn in (("committed_csv", _stuff_tier0_csv),
+                          ("pybaseball", _stuff_tier1_pybaseball),
+                          ("fg_json_api", _stuff_tier2_fg_api)):
         try:
             players = fn(year)
         except Exception as exc:  # noqa: BLE001
@@ -533,7 +605,8 @@ def fetch_stuff_plus(year: int, roster_norm: set[str]) -> dict:
     log.info("fangraphs: %d Padres pitchers via tier '%s'.",
              len(players), tier_used)
     return {
-        "source": "fangraphs",
+        "source": ("fangraphs csv (committed)" if tier_used == "committed_csv"
+                   else "fangraphs"),
         "tier": tier_used,
         "as_of": now_iso(),
         "season": year,
@@ -677,41 +750,90 @@ def fetch_game_logs(player_id: int, year: int, group: str) -> list[dict]:
 
 
 def fetch_standings(year: int) -> list[dict]:
-    log.info("Fetching %s standings ...", year)
+    """
+    NL West standings from the MLB StatsAPI (v3.1: replaces the
+    pybaseball/Baseball-Reference path, which was 403-blocked from
+    GitHub-hosted runners; StatsAPI is the same host as the roster
+    fetch, which succeeds).
+
+    Output rows keep the exact keys the frontend already reads
+    (Tm / W / L / "W-L%" / GB), ordered by division rank.
+    NOTE: field names here (leagueId=104 for the NL, records[] →
+    teamRecords[] with wins/losses/winningPercentage/gamesBack) match
+    the StatsAPI shapes this pipeline has seen, but the API is not
+    formally documented by MLB — the code logs loudly if the shape
+    drifts, and main() falls back to the last-known standings.
+    """
+    log.info("Fetching %s standings from MLB StatsAPI ...", year)
+    url = (f"{STATSAPI_BASE}/standings?leagueId=104&season={year}"
+           f"&standingsTypes=regularSeason")
     try:
-        all_divisions = standings(year)
+        data = http_get_json(url)
     except Exception as exc:  # noqa: BLE001
         log.error("Standings fetch failed: %s", exc)
         return []
-    for division_df in all_divisions:
-        div = clean_dataframe(division_df)
-        team_col = div.columns[0] if len(div.columns) else None
-        if team_col and div[team_col].astype(str).str.contains("Padres", case=False).any():
-            log.info("Found Padres division table (%d teams).", len(div))
-            return df_to_records(div)
-    log.warning("Padres not found in any standings table.")
+    for record in data.get("records", []):
+        rows = []
+        found_padres = False
+        for tr in record.get("teamRecords", []):
+            team_name = ((tr.get("team") or {}).get("name")) or ""
+            if "padres" in team_name.lower():
+                found_padres = True
+            wl = tr.get("winningPercentage")
+            try:
+                wl = float(wl)
+            except (TypeError, ValueError):
+                w, l = tr.get("wins"), tr.get("losses")
+                wl = round(w / (w + l), 3) if isinstance(w, int) and isinstance(l, int) and w + l else None
+            rows.append({
+                "Tm": team_name,
+                "W": tr.get("wins"), "L": tr.get("losses"),
+                "W-L%": wl,
+                "GB": tr.get("gamesBack", "--"),
+                "_rank": tr.get("divisionRank"),
+            })
+        if found_padres and rows:
+            rows.sort(key=lambda r: int(r["_rank"]) if str(r.get("_rank", "")).isdigit() else 99)
+            for r in rows:
+                r.pop("_rank", None)
+            log.info("Found Padres division via StatsAPI (%d teams).", len(rows))
+            return rows
+    log.warning("Padres division not found in StatsAPI standings response; "
+                "keys seen: %s", list(data.keys()))
     return []
 
 
+def _statsapi_team_season_stats(year: int, group: str) -> dict:
+    """One team season-stat line (hitting or pitching) from StatsAPI."""
+    qs = urllib.parse.urlencode({"stats": "season", "season": year,
+                                 "group": group, "gameType": "R"})
+    data = http_get_json(f"{STATSAPI_BASE}/teams/{PADRES_MLBAM_TEAM_ID}/stats?{qs}")
+    for block in data.get("stats", []):
+        for split in block.get("splits", []):
+            return split.get("stat") or {}
+    return {}
+
+
 def fetch_team_stats(year: int) -> tuple[list[dict], list[dict]]:
+    """
+    Team batting / pitching lines from the MLB StatsAPI (v3.1).
+    The frontend's run-differential KPI reads record[0].R, so the
+    StatsAPI 'runs' field is mirrored to 'R' alongside the full
+    stat line for anything else the views want later.
+    """
     batting_records: list[dict] = []
     pitching_records: list[dict] = []
-    log.info("Fetching %s team batting ...", year)
-    try:
-        bat = clean_dataframe(team_batting(year))
-        if "Team" in bat.columns:
-            bat = bat[bat["Team"].astype(str).str.upper() == TEAM_ABBREV_FG]
-        batting_records = df_to_records(bat)
-    except Exception as exc:  # noqa: BLE001
-        log.error("Team batting fetch failed: %s", exc)
-    log.info("Fetching %s team pitching ...", year)
-    try:
-        pit = clean_dataframe(team_pitching(year))
-        if "Team" in pit.columns:
-            pit = pit[pit["Team"].astype(str).str.upper() == TEAM_ABBREV_FG]
-        pitching_records = df_to_records(pit)
-    except Exception as exc:  # noqa: BLE001
-        log.error("Team pitching fetch failed: %s", exc)
+    for group, bucket in (("hitting", "batting"), ("pitching", "pitching")):
+        log.info("Fetching %s team %s from MLB StatsAPI ...", year, group)
+        try:
+            stat = _statsapi_team_season_stats(year, group)
+            if stat:
+                rec = {"Team": TEAM_ABBREV_FG, "R": stat.get("runs"), **stat}
+                (batting_records if bucket == "batting" else pitching_records).append(rec)
+            else:
+                log.warning("Team %s stats came back empty.", group)
+        except Exception as exc:  # noqa: BLE001
+            log.error("Team %s fetch failed: %s", group, exc)
     return batting_records, pitching_records
 
 
@@ -863,13 +985,23 @@ def main() -> int:
         return 1
     roster_norm = {normalize_name(p["name"]) for p in roster}
 
-    # 2) Team-level context.
+    # 2) Team-level context (StatsAPI; falls back to last-known-good).
+    prev_ts = previous.get("team_stats") or {}
     standings_records = fetch_standings(year)
+    if not standings_records and prev_ts.get("standings_nl_west"):
+        standings_records = prev_ts["standings_nl_west"]
+        log.warning("standings: fresh fetch empty — preserving last known table.")
     batting_records, pitching_records = fetch_team_stats(year)
+    if not batting_records and prev_ts.get("batting"):
+        batting_records = prev_ts["batting"]
+        log.warning("team batting: fresh fetch empty — preserving last known line.")
+    if not pitching_records and prev_ts.get("pitching"):
+        pitching_records = prev_ts["pitching"]
+        log.warning("team pitching: fresh fetch empty — preserving last known line.")
 
     # 3) Analytics feeds (independent; each falls back to last known good).
     try:
-        fresh_sal = join_salaries_to_roster(fetch_salaries_spotrac(year), roster)
+        fresh_sal = join_salaries_to_roster(fetch_salaries(year), roster)
     except Exception as exc:  # noqa: BLE001
         log.error("salaries: crashed: %s", exc)
         fresh_sal = {}
@@ -906,10 +1038,10 @@ def main() -> int:
             "event_row_cap_per_player": EVENT_ROW_CAP,
             "schema_version": 3,
             "sources": [
-                "MLB Stats API (roster, game logs, season lines)",
-                "pybaseball (Baseball-Reference, FanGraphs, Baseball Savant)",
-                "Spotrac (salary estimates — scraped)",
-                "FanGraphs (Stuff+/Location+/Pitching+)",
+                "MLB Stats API (roster, game logs, season lines, standings, team stats)",
+                "pybaseball / Baseball Savant (per-pitch Statcast, zone damage)",
+                "salaries.json (front-office maintained) or Spotrac scrape",
+                "stuffplus.csv (committed) or FanGraphs (Stuff+/Location+/Pitching+)",
             ],
         },
         "team_stats": {

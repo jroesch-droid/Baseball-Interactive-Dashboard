@@ -619,12 +619,11 @@
     <footer>
       <span class="lock">●</span> Internal evaluation build · Season <span id="footSeason">—</span> ·
       Feed: <span style="font-family:var(--mono)">padres_live_data.json</span> schema v3
-      (MLB Stats API · Baseball Savant · FanGraphs · Spotrac).
+      (MLB Stats API · Baseball Savant · committed salaries.json / Spotrac · committed stuffplus.csv / FanGraphs).
       Fields with no chip are live fetched values; <span class="model-chip fb">FALLBACK</span> marks a failed scrape
       (last-known or locally-modeled value shown); <span class="model-chip">MODEL v0</span> marks metrics that still
       have no live feed source (projected WAR, whiff response, lineup runs, leverage fit) — placeholder math,
-      not decision-grade. Salary figures originate from Spotrac estimates; verify decision-grade numbers
-      against primary sources.
+      not decision-grade. Verify decision-grade salary figures against primary sources.
     </footer>
   </div>
 </div>
@@ -758,9 +757,11 @@ const FEED = {
     const a = this.analytics().salaries || {};
     const usd = this.salariesIndex ? this.salariesIndex[p.norm] : null;
     if (usd != null) {
+      const srcName = a.source || "salary feed";
       return { value: +(usd / 1e6).toFixed(2),
                src: a.stale ? "fallback" : "live",
-               why: a.stale ? "feed stale — last known Spotrac value" : "Spotrac via nightly pipeline" };
+               why: a.stale ? "feed stale — last known value (" + srcName + ")"
+                            : srcName + " via nightly pipeline" };
     }
     return { value: MODELS.salaryM_v0(p), src: "fallback",
              why: "player not in salary feed — local v0 estimate" };
@@ -928,8 +929,8 @@ const MODELS = {
   },
 
   NOTES: {
-    salary:  { live: "Spotrac base salary via nightly pipeline (estimate — verify decision-grade figures against primary sources).",
-               fallback: "Salary scrape failed or player unmatched — showing last-known Spotrac value or the local v0 estimate.",
+    salary:  { live: "Salary feed via nightly pipeline — committed salaries.json (front-office verified) or Spotrac estimate; hover a player's dot for the exact source.",
+               fallback: "Salary feed empty/stale or player unmatched — showing last-known feed value or the local v0 estimate.",
                model: "Salary v0 placeholder." },
     war:     { model: "Projected WAR v0 — local placeholder blend of workload + quality proxies. No live projection feed yet." },
     surplus: { model: "Surplus = projWAR (Model v0) × sandbox $/WAR − salary (live when fetched)." },
@@ -1147,7 +1148,7 @@ function renderValueChart() {
         tooltip: { callbacks: {
           title: (items) => items[0].raw.name + " · " + items[0].raw.pos,
           label: (c) => [
-            "salary " + money(c.raw.x) + (c.raw.salSrc === "live" ? " (Spotrac)" : " (FALLBACK)"),
+            "salary " + money(c.raw.x) + (c.raw.salSrc === "live" ? " (feed)" : " (FALLBACK)"),
             "proj WAR " + fmt(c.raw.y) + " (modeled)",
             "surplus " + (c.raw.surplus >= 0 ? "+" : "") + money(c.raw.surplus),
           ],

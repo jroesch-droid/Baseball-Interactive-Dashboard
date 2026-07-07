@@ -19,18 +19,19 @@ concurrency:
 jobs:
   update-data:
     runs-on: ubuntu-latest
-    timeout-minutes: 45   # raised: Stuff+ tiers + salary scrape add time
+    timeout-minutes: 45
 
     steps:
       - name: Check out repository
         # IMPORTANT: the checkout brings the previously committed
         # padres_live_data.json into the workspace — that file IS the
-        # "last known good" store the v3 pipeline falls back to when a
-        # scrape fails. Do not delete it before running the script.
-        uses: actions/checkout@v4
+        # "last known good" store the pipeline falls back to when a
+        # fetch fails. It also brings salaries.json / stuffplus.csv,
+        # the committed primary sources for salary and Stuff+ data.
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: "pip"
@@ -39,11 +40,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-
-      - name: Install Playwright browser (tier-3 FanGraphs fallback only)
-        # Adds ~1-2 min. Safe to remove if tiers 1-2 prove reliable;
-        # the script skips tier 3 automatically when Chromium is absent.
-        run: python -m playwright install --with-deps chromium
 
       - name: Run the data pipeline
         run: python update_padres_stats.py
