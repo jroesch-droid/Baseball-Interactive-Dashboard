@@ -27,10 +27,10 @@ jobs:
         # padres_live_data.json into the workspace — that file IS the
         # "last known good" store the v3 pipeline falls back to when a
         # scrape fails. Do not delete it before running the script.
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: "pip"
