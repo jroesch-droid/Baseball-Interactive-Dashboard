@@ -2,11 +2,8 @@ name: Update Padres Dashboard Data
 
 on:
   schedule:
-    # GitHub Actions cron runs in UTC only.
-    # 11:30 PM Pacific Daylight Time (UTC-7) = 06:30 UTC next day.
+    # 11:30 PM PDT = 06:30 UTC next day (Actions cron is UTC)
     - cron: "30 6 * * *"
-    # 11:30 PM PST (winter) = 07:30 UTC — uncomment in November:
-    # - cron: "30 7 * * *"
   workflow_dispatch: {}
 
 permissions:
@@ -22,17 +19,9 @@ jobs:
     timeout-minutes: 45
 
     steps:
+      # Checkout restores padres_live_data.json (the last-known-good
+      # store) and salaries.json — do not delete them.
       - name: Check out repository
-        # IMPORTANT: the checkout brings the previously committed
-        # padres_live_data.json into the workspace — that file IS the
-<<<<<<< HEAD
-        # "last known good" store the pipeline falls back to when a
-        # fetch fails. It also brings salaries.json / stuffplus.csv,
-        # the committed primary sources for salary and Stuff+ data.
-=======
-        # "last known good" store the v3 pipeline falls back to when a
-        # scrape fails. Do not delete it before running the script.
->>>>>>> 0b90a6bc47359f961749da6c10cd3027cb785c6c
         uses: actions/checkout@v7
 
       - name: Set up Python
@@ -55,7 +44,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add padres_live_data.json
           if git diff --cached --quiet; then
-            echo "No data changes tonight — nothing to commit."
+            echo "No data changes tonight - nothing to commit."
           else
             git commit -m "chore(data): nightly Padres stats refresh $(date -u +'%Y-%m-%d')"
             git push
