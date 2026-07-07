@@ -25,9 +25,14 @@ jobs:
       - name: Check out repository
         # IMPORTANT: the checkout brings the previously committed
         # padres_live_data.json into the workspace — that file IS the
+<<<<<<< HEAD
         # "last known good" store the pipeline falls back to when a
         # fetch fails. It also brings salaries.json / stuffplus.csv,
         # the committed primary sources for salary and Stuff+ data.
+=======
+        # "last known good" store the v3 pipeline falls back to when a
+        # scrape fails. Do not delete it before running the script.
+>>>>>>> 0b90a6bc47359f961749da6c10cd3027cb785c6c
         uses: actions/checkout@v7
 
       - name: Set up Python
