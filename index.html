@@ -3,478 +3,721 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Padres Live Analytics</title>
+<title>Padres Front Office · Decision Platform</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
+  /* =====================================================================
+     PADRES FRONT OFFICE — design tokens (schema v3 build)
+     Brown #2F241D · Gold #FFC425 · White · muted gray accents
+     ZERO-ANIMATION POLICY: no transitions/animations anywhere; charts
+     and tooltips render instantly for fast data parsing.
+     ===================================================================== */
   :root {
-    --bg: #221A15;            /* deep derivative of Padres Brown */
-    --panel: #2F241D;         /* official Padres Brown */
-    --raised: #3B2E24;
-    --line: rgba(255, 196, 37, 0.14);
-    --line-soft: rgba(255, 255, 255, 0.07);
-    --gold: #FFC425;          /* official Padres Gold */
-    --gold-soft: rgba(255, 196, 37, 0.10);
-    --white: #FFFFFF;
-    --sand: #C9BAA8;          /* warm secondary text */
-    --danger: #E86A5E;
-    --radius: 10px;
-    --display: "Barlow Condensed", "Arial Narrow", sans-serif;
-    --body: "Barlow", "Segoe UI", system-ui, sans-serif;
+    --bg:        #1D1611;
+    --panel:     #2F241D;
+    --raised:    #3A2D23;
+    --sunken:    #251C16;
+    --gold:      #FFC425;
+    --gold-soft: rgba(255,196,37,0.10);
+    --gold-line: rgba(255,196,37,0.16);
+    --white:     #FFFFFF;
+    --slate:     #8E8A85;
+    --sand:      #C9BAA8;
+    --line:      rgba(255,255,255,0.07);
+    --good:      #7DC47F;
+    --bad:       #E86A5E;
+    --fb:        #E8933D;                  /* fallback orange */
+    --fb-soft:   rgba(232,147,61,0.12);
+    --fb-line:   rgba(232,147,61,0.38);
+    --nosample:  #55504B;                  /* insufficient-sample gray */
+    --radius:    10px;
+    --shadow:    0 6px 18px rgba(0,0,0,0.28);
+    --display:   "Barlow Condensed", "Arial Narrow", sans-serif;
+    --body:      "Barlow", "Segoe UI", system-ui, sans-serif;
+    --mono:      "JetBrains Mono", ui-monospace, "SF Mono", Consolas, monospace;
   }
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-
+  * { box-sizing: border-box; margin: 0; padding: 0;
+      transition: none !important; animation: none !important; }
   html, body { background: var(--bg); color: var(--white); font-family: var(--body); }
   body { min-height: 100vh; font-size: 15px; line-height: 1.5; }
-
   ::selection { background: var(--gold); color: var(--panel); }
-
   a { color: var(--gold); }
 
-  button, select {
+  button, select, input[type="text"], input[type="number"] {
     font-family: var(--body);
     color: var(--white);
     background: var(--raised);
-    border: 1px solid var(--line);
+    border: 1px solid var(--gold-line);
     border-radius: 6px;
     padding: 7px 12px;
     font-size: 13px;
     cursor: pointer;
   }
+  input[type="number"] { cursor: text; }
   button:hover, select:hover { border-color: var(--gold); }
-  button:focus-visible, select:focus-visible {
-    outline: 2px solid var(--gold); outline-offset: 2px;
-  }
+  button:focus-visible, select:focus-visible, input:focus-visible,
+  [tabindex]:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
   button.primary { background: var(--gold); color: #241C16; border-color: var(--gold); font-weight: 600; }
-  button.primary:hover { filter: brightness(1.06); }
+  button.ghost { background: transparent; }
 
-  /* ---------------- Header: stadium bowl blueprint ---------------- */
-  header {
-    position: relative;
-    overflow: hidden;
-    border-bottom: 1px solid var(--line);
-    background: linear-gradient(180deg, #292019 0%, var(--bg) 100%);
+  input[type="range"] {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 4px; border-radius: 2px;
+    background: linear-gradient(90deg, var(--gold) var(--fill, 50%), var(--raised) var(--fill, 50%));
+    cursor: pointer;
   }
-  .bowl {
-    position: absolute; inset: 0;
-    width: 100%; height: 100%;
-    pointer-events: none;
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--gold); border: 2px solid #241C16;
+    box-shadow: 0 0 0 1px var(--gold);
   }
-  .header-inner {
-    position: relative;
-    max-width: 1240px;
-    margin: 0 auto;
-    padding: 34px 24px 26px;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-end;
-    gap: 18px 28px;
+  input[type="range"]::-moz-range-thumb {
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--gold); border: 2px solid #241C16;
   }
-  .wordmark .eyebrow {
-    font-family: var(--display);
-    font-weight: 600;
-    letter-spacing: 0.34em;
-    font-size: 13px;
-    color: var(--gold);
-    text-transform: uppercase;
-  }
-  .wordmark h1 {
-    font-family: var(--display);
-    font-weight: 700;
-    font-size: clamp(38px, 6vw, 58px);
-    line-height: 0.95;
-    letter-spacing: 0.01em;
-    text-transform: uppercase;
-  }
-  .wordmark h1 .thin { color: var(--sand); font-weight: 500; }
 
-  .status {
-    margin-left: auto;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 10px;
-    font-size: 13px;
-    color: var(--sand);
+  /* ---------------- App shell ---------------- */
+  .shell { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
+
+  .rail {
+    position: sticky; top: 0; align-self: start;
+    height: 100vh; overflow-y: auto;
+    background: linear-gradient(180deg, #281E17 0%, var(--sunken) 100%);
+    border-right: 1px solid var(--gold-line);
+    padding: 22px 16px;
+    display: flex; flex-direction: column; gap: 6px;
   }
+  .rail .brand { margin-bottom: 12px; }
+  .rail .brand .eyebrow {
+    font-family: var(--display); font-weight: 600; letter-spacing: .3em;
+    font-size: 11px; color: var(--gold); text-transform: uppercase;
+  }
+  .rail .brand h1 {
+    font-family: var(--display); font-weight: 700; font-size: 27px;
+    line-height: 1; text-transform: uppercase; margin-top: 4px;
+  }
+  .rail .brand h1 .thin { color: var(--sand); font-weight: 500; display: block; font-size: 17px; }
+
+  .rail nav { display: flex; flex-direction: column; gap: 2px; }
+  .rail nav a {
+    display: flex; align-items: center; gap: 9px;
+    color: var(--sand); text-decoration: none;
+    font-size: 13.5px; font-weight: 500;
+    padding: 8px 10px; border-radius: 7px;
+    border: 1px solid transparent;
+  }
+  .rail nav a .idx { font-family: var(--mono); font-size: 10.5px; color: var(--slate); width: 20px; flex: none; }
+  .rail nav a:hover { color: var(--white); background: var(--gold-soft); }
+  .rail nav a.active { color: var(--gold); background: var(--gold-soft); border-color: var(--gold-line); }
+  .rail nav a.active .idx { color: var(--gold); }
+
+  .rail .spacer { flex: 1; min-height: 8px; }
+
+  .exec-toggle {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    background: var(--panel); border: 1px solid var(--gold-line);
+    border-radius: 8px; padding: 10px 12px; cursor: pointer;
+    font-size: 13px; color: var(--sand); user-select: none;
+  }
+  .exec-toggle:hover { border-color: var(--gold); color: var(--white); }
+  .exec-toggle .sw {
+    position: relative; width: 34px; height: 18px; flex: none;
+    background: var(--raised); border: 1px solid var(--gold-line); border-radius: 999px;
+  }
+  .exec-toggle .sw::after {
+    content: ""; position: absolute; top: 2px; left: 2px;
+    width: 12px; height: 12px; border-radius: 50%; background: var(--slate);
+  }
+  .exec-toggle[aria-pressed="true"] .sw { background: var(--gold-soft); }
+  .exec-toggle[aria-pressed="true"] .sw::after { transform: translateX(16px); background: var(--gold); }
+
+  /* Sandbox: editable front-office assumptions */
+  .sandbox {
+    margin-top: 10px;
+    background: var(--panel); border: 1px solid var(--gold-line);
+    border-radius: 8px; padding: 12px;
+  }
+  .sandbox .sb-title {
+    font-family: var(--display); font-weight: 600; font-size: 13px;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--gold);
+    display: flex; align-items: center; gap: 6px; margin-bottom: 10px;
+  }
+  .sandbox label {
+    display: block; font-size: 10.5px; color: var(--slate);
+    text-transform: uppercase; letter-spacing: .09em; margin-bottom: 5px;
+  }
+  .sandbox .sb-big {
+    font-family: var(--mono); font-size: 13px; color: var(--gold); font-weight: 600;
+  }
+  .sandbox .sb-row {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+    font-size: 12px; color: var(--sand); margin-top: 9px;
+    font-family: var(--mono); font-variant-numeric: tabular-nums;
+  }
+  .sandbox .sb-row b { color: var(--white); font-weight: 500; }
+  .sandbox .sb-note { font-size: 10px; color: var(--slate); font-family: var(--body); }
+  .sandbox button { width: 100%; margin-top: 10px; font-size: 12px; padding: 6px 10px; }
+
+  .rail .session {
+    margin-top: 10px; font-family: var(--mono); font-size: 10.5px;
+    color: var(--slate); line-height: 1.7;
+  }
+  .rail .session .lock { color: var(--gold); }
+
+  /* ---------------- Content ---------------- */
+  .content { min-width: 0; padding: 22px 26px 70px; max-width: 1320px; }
+
+  .topbar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    padding-bottom: 16px; border-bottom: 1px solid var(--line); margin-bottom: 8px;
+  }
+  .topbar h2 { font-family: var(--display); font-weight: 700; font-size: 30px; text-transform: uppercase; letter-spacing: .02em; }
+  .topbar .sub { color: var(--slate); font-size: 13px; }
+  .topbar .status { margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   .chip {
     display: inline-flex; align-items: center; gap: 7px;
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    padding: 6px 13px;
-    white-space: nowrap;
+    background: var(--panel); border: 1px solid var(--gold-line);
+    border-radius: 999px; padding: 5px 12px;
+    font-size: 12.5px; color: var(--sand); white-space: nowrap;
   }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--sand); flex: none; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--slate); flex: none; }
   .dot.live { background: var(--gold); box-shadow: 0 0 8px rgba(255,196,37,.7); }
-  .dot.err  { background: var(--danger); }
-
-  /* ---------------- Layout ---------------- */
-  main { max-width: 1240px; margin: 0 auto; padding: 26px 24px 60px; }
+  .dot.err  { background: var(--bad); }
 
   .banner {
-    display: none;
-    align-items: center; gap: 10px;
-    background: var(--gold-soft);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    padding: 11px 16px;
-    font-size: 13.5px;
-    color: var(--sand);
-    margin-bottom: 22px;
+    display: none; align-items: flex-start; gap: 10px;
+    background: var(--gold-soft); border: 1px solid var(--gold-line);
+    border-radius: var(--radius); padding: 11px 16px;
+    font-size: 13.5px; color: var(--sand); margin: 14px 0 4px;
   }
   .banner.show { display: flex; }
   .banner strong { color: var(--gold); font-weight: 600; }
-  .banner code { color: var(--gold); }
 
-  .section-label {
-    font-family: var(--display);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.22em;
-    font-size: 13px;
-    color: var(--gold);
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin: 30px 0 14px;
+  /* Provenance chips: three states.
+     LIVE      -> chip hidden entirely (real fetched data needs no caveat)
+     FALLBACK  -> orange chip (scrape failed / player unmatched; value is
+                  last-known-good or the local v0 formula)
+     MODEL v0  -> gold chip (metric has no live feed source yet)        */
+  .model-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-family: var(--mono); font-size: 9.5px; font-weight: 600;
+    letter-spacing: .08em; color: var(--gold);
+    background: var(--gold-soft); border: 1px solid var(--gold-line);
+    border-radius: 4px; padding: 1px 5px;
+    vertical-align: 2px; cursor: help;
   }
-  .section-label::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .model-chip::before { content: "◆"; font-size: 7px; }
+  .model-chip.fb { color: var(--fb); background: var(--fb-soft); border-color: var(--fb-line); }
+  .model-chip.live { display: none; }
 
-  /* KPI strip */
-  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
-  .kpi {
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    padding: 16px 18px 14px;
-    position: relative;
-    overflow: hidden;
+  .section { margin-top: 34px; scroll-margin-top: 20px; }
+  .section-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 4px; }
+  .section-head .idx { font-family: var(--mono); font-size: 12px; color: var(--slate); }
+  .section-head h3 {
+    font-family: var(--display); font-weight: 600; font-size: 22px;
+    letter-spacing: .06em; text-transform: uppercase; color: var(--gold);
   }
-  .kpi::before {
-    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
-    background: var(--gold); opacity: .85;
-  }
-  .kpi .label { font-size: 12px; text-transform: uppercase; letter-spacing: .12em; color: var(--sand); }
-  .kpi .value {
-    font-family: var(--display);
-    font-weight: 700;
-    font-size: clamp(28px, 3.2vw, 40px);
-    line-height: 1.05;
-    font-variant-numeric: tabular-nums;
-    margin-top: 4px;
-    overflow-wrap: anywhere;
-  }
-  .kpi .sub { font-size: 12.5px; color: var(--sand); margin-top: 3px; }
-  .kpi .value.gold { color: var(--gold); }
+  .section-head::after { content: ""; flex: 1; height: 1px; background: var(--gold-line); align-self: center; }
+  .section > .lede { color: var(--slate); font-size: 13px; margin-bottom: 14px; max-width: 860px; }
 
-  /* Cards / charts */
   .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .card {
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    padding: 18px;
+    background: var(--panel); border: 1px solid var(--gold-line);
+    border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow);
   }
-  .card h3 {
-    font-family: var(--display);
-    font-weight: 600;
-    font-size: 19px;
-    letter-spacing: .04em;
-    text-transform: uppercase;
+  .card h4 {
+    font-family: var(--display); font-weight: 600; font-size: 18px;
+    letter-spacing: .04em; text-transform: uppercase;
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   }
-  .card .hint { font-size: 12.5px; color: var(--sand); margin: 2px 0 12px; }
-  .chart-wrap { position: relative; height: 320px; }
+  .card .hint { font-size: 12.5px; color: var(--slate); margin: 3px 0 12px; }
+  .chart-wrap { position: relative; height: 340px; }
 
-  .radar-controls { display: flex; flex-wrap: wrap; gap: 10px; margin: 4px 0 12px; }
-  .radar-controls label { font-size: 12px; color: var(--sand); display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: .08em; }
+  .controls { display: flex; flex-wrap: wrap; gap: 12px; margin: 4px 0 12px; align-items: end; }
+  .controls .field { min-width: 150px; }
+  .controls label {
+    font-size: 11px; color: var(--slate); display: block; margin-bottom: 4px;
+    text-transform: uppercase; letter-spacing: .09em;
+  }
+  .controls select { width: 100%; }
 
-  /* Roster table */
-  .table-scroll {
-    overflow: auto;
-    max-height: 420px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    background: var(--panel);
-  }
-  table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 640px; }
-  thead th {
-    position: sticky; top: 0; z-index: 1;
-    background: var(--raised);
-    text-align: left;
-    padding: 0;
-    border-bottom: 1px solid var(--line);
-  }
-  thead th button {
-    width: 100%;
-    background: none; border: none; border-radius: 0;
-    color: var(--sand);
-    font-size: 12px; text-transform: uppercase; letter-spacing: .08em; font-weight: 600;
-    padding: 12px 14px;
-    text-align: left;
-    display: flex; align-items: center; gap: 6px;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-  thead th button:hover { color: var(--gold); }
-  thead th button .arrow { font-size: 10px; color: var(--gold); }
-  tbody td {
-    padding: 11px 14px;
-    border-bottom: 1px solid var(--line-soft);
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-  }
-  tbody tr:last-child td { border-bottom: none; }
-  tbody tr { transition: background .12s ease; }
-  tbody tr:hover { background: rgba(255, 196, 37, 0.07); }
-  td.name { font-weight: 600; }
-  td .role-tag {
-    font-size: 11px; text-transform: uppercase; letter-spacing: .1em;
-    color: var(--sand); border: 1px solid var(--line); border-radius: 4px;
-    padding: 2px 7px; margin-left: 8px;
-  }
-  td.top {
-    color: var(--gold);
-    background: var(--gold-soft);
-    font-weight: 600;
-  }
-  .empty-cell { color: var(--sand); }
+  .readout { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 13px; color: var(--sand); }
+  .readout b { color: var(--gold); font-weight: 600; }
+  .readout .up { color: var(--good); }
 
-  /* Empty / error state */
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 16px; }
+  .kpi {
+    background: var(--panel); border: 1px solid var(--gold-line);
+    border-radius: var(--radius); padding: 15px 17px 13px;
+    position: relative; overflow: hidden; box-shadow: var(--shadow);
+  }
+  .kpi::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--gold); opacity: .85; }
+  .kpi .label { font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: var(--slate); }
+  .kpi .value {
+    font-family: var(--display); font-weight: 700;
+    font-size: clamp(26px, 3vw, 38px); line-height: 1.05;
+    font-variant-numeric: tabular-nums; margin-top: 4px; overflow-wrap: anywhere;
+  }
+  .kpi .value.gold { color: var(--gold); }
+  .kpi .sub { font-size: 12px; color: var(--sand); margin-top: 3px; }
+
+  .trade { display: grid; grid-template-columns: 1fr auto 1fr; gap: 14px; align-items: stretch; }
+  .trade .side { background: var(--sunken); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; }
+  .trade .side h5 {
+    font-family: var(--display); font-size: 15px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--sand); margin-bottom: 10px;
+  }
+  .trade .vs { align-self: center; font-family: var(--display); font-weight: 700; font-size: 22px; color: var(--slate); }
+  .trade .figure { font-family: var(--mono); font-size: 13px; margin-top: 8px; color: var(--sand); }
+  .trade .figure b { color: var(--gold); }
+  .trade-verdict {
+    margin-top: 14px; padding: 12px 16px; border-radius: 8px;
+    border: 1px solid var(--gold-line); background: var(--sunken);
+    font-size: 14px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  }
+  .trade-verdict .badge {
+    font-family: var(--display); text-transform: uppercase; letter-spacing: .06em;
+    font-size: 14px; font-weight: 700; padding: 3px 10px; border-radius: 5px;
+  }
+  .badge.fair { background: var(--gold-soft); color: var(--gold); border: 1px solid var(--gold-line); }
+  .badge.win  { background: rgba(125,196,127,.12); color: var(--good); border: 1px solid rgba(125,196,127,.3); }
+  .badge.loss { background: rgba(232,106,94,.12); color: var(--bad); border: 1px solid rgba(232,106,94,.3); }
+  .meter { height: 8px; border-radius: 4px; background: var(--raised); overflow: hidden; margin-top: 10px; }
+  .meter > i { display: block; height: 100%; background: var(--gold); border-radius: 4px; }
+
+  /* Gameday zone heat map (SVG) */
+  .zone-wrap { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .zone-svg-box { background: var(--sunken); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+  .zone-svg-box svg { display: block; }
+  .zone-svg-box .zc { cursor: default; }
+  .zone-svg-box .zc:focus-visible { outline: 2px solid var(--gold); }
+  .zone-legend { font-size: 12px; color: var(--slate); max-width: 280px; }
+  .zone-legend .scale { display: flex; align-items: center; gap: 6px; margin: 8px 0; }
+  .zone-legend .swatch { width: 26px; height: 10px; border-radius: 3px; flex: none; }
+
+  .lineup { display: grid; grid-template-columns: 1fr 300px; gap: 14px; }
+  .lineup-list { display: flex; flex-direction: column; gap: 6px; }
+  .lineup-card {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--sunken); border: 1px solid var(--line);
+    border-radius: 8px; padding: 9px 12px; cursor: grab;
+  }
+  .lineup-card:active { cursor: grabbing; }
+  .lineup-card.dragging { opacity: .45; border-color: var(--gold); }
+  .lineup-card.drop-above { box-shadow: 0 -2px 0 0 var(--gold); }
+  .lineup-card .slot { font-family: var(--display); font-weight: 700; font-size: 18px; color: var(--gold); width: 22px; text-align: center; flex: none; }
+  .lineup-card .who { font-weight: 600; font-size: 14px; }
+  .lineup-card .pos { color: var(--slate); font-size: 12px; margin-left: 6px; }
+  .lineup-card .oi { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--sand); font-variant-numeric: tabular-nums; }
+  .lineup-out {
+    background: var(--sunken); border: 1px solid var(--gold-line);
+    border-radius: var(--radius); padding: 16px; align-self: start; position: sticky; top: 16px;
+  }
+  .lineup-out .big { font-family: var(--display); font-weight: 700; font-size: 46px; color: var(--gold); line-height: 1; font-variant-numeric: tabular-nums; }
+  .lineup-out .cmp { font-family: var(--mono); font-size: 12px; color: var(--sand); margin-top: 8px; line-height: 1.8; }
+
+  .matrix-scroll { overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+  table.matrix { border-collapse: collapse; width: 100%; min-width: 680px; font-size: 13px; }
+  table.matrix th, table.matrix td { padding: 9px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  table.matrix thead th {
+    background: var(--raised); text-align: left; position: sticky; top: 0;
+    font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--slate); font-weight: 600;
+  }
+  table.matrix td.rowhead { font-weight: 600; background: var(--sunken); }
+  table.matrix td.rowhead .li { display: block; font-family: var(--mono); font-size: 10.5px; color: var(--slate); font-weight: 400; }
+  table.matrix td.fit { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: center; border-radius: 4px; }
+  table.matrix td.fit.best { color: #241C16; background: var(--gold); font-weight: 600; }
+
+  .exec-panel { display: none; }
+  body.exec-mode .exec-panel { display: block; }
+  body.exec-mode .deep { display: none; }
+  .exec-panel .brief {
+    background: var(--panel); border: 1px solid var(--gold-line);
+    border-radius: var(--radius); padding: 22px 26px; box-shadow: var(--shadow); margin-top: 16px;
+  }
+  .exec-panel h4 {
+    font-family: var(--display); font-size: 19px; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--gold); margin: 18px 0 8px;
+  }
+  .exec-panel h4:first-child { margin-top: 0; }
+  .exec-panel ul { list-style: none; }
+  .exec-panel li { padding: 7px 0 7px 20px; position: relative; font-size: 14.5px; color: var(--white); border-bottom: 1px solid var(--line); }
+  .exec-panel li:last-child { border-bottom: none; }
+  .exec-panel li::before { content: "▸"; position: absolute; left: 2px; color: var(--gold); }
+  .exec-panel li .mono { font-family: var(--mono); font-size: 12.5px; color: var(--sand); }
+
   .state {
-    border: 1px dashed var(--line);
-    border-radius: var(--radius);
-    background: var(--panel);
-    padding: 44px 28px;
-    text-align: center;
-    margin-top: 26px;
+    border: 1px dashed var(--gold-line); border-radius: var(--radius);
+    background: var(--panel); padding: 44px 28px; text-align: center; margin-top: 26px;
   }
   .state h2 { font-family: var(--display); text-transform: uppercase; letter-spacing: .06em; font-size: 26px; }
   .state p { color: var(--sand); max-width: 560px; margin: 10px auto 18px; font-size: 14px; }
   .state code { color: var(--gold); background: var(--raised); padding: 2px 6px; border-radius: 4px; font-size: 13px; }
 
-  footer {
-    max-width: 1240px; margin: 0 auto; padding: 0 24px 40px;
-    color: var(--sand); font-size: 12.5px;
-  }
+  footer { color: var(--slate); font-size: 12px; margin-top: 46px; line-height: 1.8; max-width: 900px; }
+  footer .lock { color: var(--gold); }
 
   .hidden { display: none !important; }
 
-  @media (max-width: 980px) {
+  #tip {
+    position: fixed; z-index: 50; pointer-events: none;
+    background: var(--raised); border: 1px solid var(--gold-line);
+    border-radius: 6px; padding: 7px 10px;
+    font-family: var(--mono); font-size: 11.5px; color: var(--white);
+    box-shadow: var(--shadow); display: none; max-width: 280px; line-height: 1.55;
+  }
+  #tip .t { color: var(--gold); font-weight: 600; }
+  #tip .fb { color: var(--fb); }
+
+  @media (max-width: 1080px) {
+    .grid-2, .lineup, .trade { grid-template-columns: 1fr; }
+    .trade .vs { justify-self: center; }
     .kpis { grid-template-columns: repeat(2, 1fr); }
-    .grid-2 { grid-template-columns: 1fr; }
-    .status { margin-left: 0; }
+    .lineup-out { position: static; }
+  }
+  @media (max-width: 780px) {
+    .shell { grid-template-columns: 1fr; }
+    .rail { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; }
+    .rail nav { flex-direction: row; flex-wrap: wrap; }
+    .rail .spacer { display: none; }
+    .sandbox { flex: 1 1 240px; }
+    .content { padding: 18px 16px 60px; }
   }
   @media (max-width: 520px) {
     .kpis { grid-template-columns: 1fr; }
-    .chart-wrap { height: 260px; }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    * { transition: none !important; animation: none !important; }
+    .chart-wrap { height: 270px; }
   }
 </style>
 </head>
 <body>
+<div id="tip" role="tooltip"></div>
 
-<header>
-  <!-- Signature: geometric stadium-bowl blueprint -->
-  <svg class="bowl" viewBox="0 0 1240 200" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
-    <g fill="none" stroke="#FFC425" stroke-opacity="0.10">
-      <!-- concentric seating-bowl arcs, centered below the fold -->
-      <circle cx="620" cy="330" r="140" stroke-width="1"/>
-      <circle cx="620" cy="330" r="185" stroke-width="1"/>
-      <circle cx="620" cy="330" r="230" stroke-width="1"/>
-      <circle cx="620" cy="330" r="275" stroke-width="1"/>
-      <circle cx="620" cy="330" r="320" stroke-width="1"/>
-      <circle cx="620" cy="330" r="370" stroke-width="1.5" stroke-opacity="0.14"/>
-      <circle cx="620" cy="330" r="430" stroke-width="1"/>
-      <circle cx="620" cy="330" r="500" stroke-width="1"/>
-      <!-- radiating section lines -->
-      <g stroke-opacity="0.08">
-        <line x1="620" y1="330" x2="620"  y2="-40"/>
-        <line x1="620" y1="330" x2="420"  y2="-40"/>
-        <line x1="620" y1="330" x2="820"  y2="-40"/>
-        <line x1="620" y1="330" x2="220"  y2="-10"/>
-        <line x1="620" y1="330" x2="1020" y2="-10"/>
-        <line x1="620" y1="330" x2="40"   y2="60"/>
-        <line x1="620" y1="330" x2="1200" y2="60"/>
-        <line x1="620" y1="330" x2="-60"  y2="160"/>
-        <line x1="620" y1="330" x2="1300" y2="160"/>
-      </g>
-      <!-- foul lines meeting at the plate -->
-      <g stroke-opacity="0.18" stroke-width="1.5">
-        <line x1="620" y1="196" x2="470" y2="46"/>
-        <line x1="620" y1="196" x2="770" y2="46"/>
-      </g>
-    </g>
-  </svg>
-
-  <div class="header-inner">
-    <div class="wordmark">
-      <div class="eyebrow">San Diego · NL West</div>
-      <h1>Padres <span class="thin">Live Analytics</span></h1>
+<div class="shell">
+  <!-- ================= Left rail ================= -->
+  <aside class="rail">
+    <div class="brand">
+      <div class="eyebrow">San Diego</div>
+      <h1>Padres<span class="thin">Front Office</span></h1>
     </div>
-    <div class="status">
-      <span class="chip"><span class="dot" id="statusDot"></span><span id="statusText">Connecting to data…</span></span>
-      <span class="chip" title="The dashboard re-reads padres_live_data.json every 30 minutes">Next check: <span id="nextRefresh" style="margin-left:4px">30 min</span></span>
-      <button id="refreshBtn" type="button">Refresh now</button>
+    <nav aria-label="Modules">
+      <a href="#roster"   class="active"><span class="idx">01</span>Roster Optimization</a>
+      <a href="#trade"    ><span class="idx">02</span>Trade Simulator</a>
+      <a href="#pitch"    ><span class="idx">03</span>Pitch Design Lab</a>
+      <a href="#damage"   ><span class="idx">04</span>Damage Opportunity</a>
+      <a href="#lineup"   ><span class="idx">05</span>Lineup Optimizer</a>
+      <a href="#bullpen"  ><span class="idx">06</span>Bullpen Leverage</a>
+    </nav>
+    <div class="spacer"></div>
+
+    <!-- Sandbox: editable analytics.assumptions -->
+    <div class="sandbox" id="sandbox">
+      <div class="sb-title">Sandbox · Assumptions</div>
+      <label for="dpwSlider">Market cost of 1 WAR · <span class="sb-big" id="dpwVal">$8.0M</span></label>
+      <input type="range" id="dpwSlider" min="4" max="14" step="0.5" value="8"
+             aria-label="Dollars per WAR in millions">
+      <div class="sb-row"><span>High-spin FF ≥</span><b><span id="rpmVal">2400</span> rpm</b></div>
+      <div class="sb-row" style="margin-top:2px"><span class="sb-note">applied at pipeline time — edit in update_padres_stats.py</span></div>
+      <div class="sb-row"><span>Zone min sample</span><b><span id="minNVal">5</span> PA</b></div>
+      <button id="dpwReset" class="ghost" type="button">Reset to feed value</button>
     </div>
-  </div>
-</header>
 
-<main>
-  <div class="banner" id="sampleBanner">
-    <strong>Sample data</strong>
-    <span>You're viewing generated demo values. Host this file next to <code>padres_live_data.json</code> to see live stats.</span>
-  </div>
+    <button class="exec-toggle" id="execToggle" aria-pressed="false" type="button" style="margin-top:10px">
+      Executive view <span class="sw" aria-hidden="true"></span>
+    </button>
+    <div class="session">
+      <span class="lock">●</span> INTERNAL · EVAL BUILD<br>
+      SCHEMA v3 · <span id="provSummary">provenance —</span><br>
+      <span id="sessionStamp">—</span>
+    </div>
+  </aside>
 
-  <!-- Empty / error state -->
-  <div class="state hidden" id="emptyState">
-    <h2>Waiting for data</h2>
-    <p>
-      Couldn't load <code>padres_live_data.json</code>. Place this dashboard in the same
-      folder (or GitHub Pages site) as the JSON produced by the nightly pipeline, then refresh.
-      The dashboard also retries automatically every 30 minutes.
-    </p>
-    <button class="primary" id="sampleBtn" type="button">Preview with sample data</button>
-  </div>
-
-  <div id="dashboard" class="hidden">
-    <div class="section-label">Tonight's numbers</div>
-    <div class="kpis">
-      <div class="kpi">
-        <div class="label">Record / Win %</div>
-        <div class="value" id="kpiRecord">—</div>
-        <div class="sub" id="kpiRecordSub">&nbsp;</div>
+  <!-- ================= Content ================= -->
+  <div class="content">
+    <div class="topbar">
+      <div>
+        <h2>Decision Platform</h2>
+        <div class="sub">Roster value · pitch design · in-game strategy — one nightly feed</div>
       </div>
-      <div class="kpi">
-        <div class="label">NL West Rank</div>
-        <div class="value gold" id="kpiRank">—</div>
-        <div class="sub" id="kpiRankSub">&nbsp;</div>
-      </div>
-      <div class="kpi">
-        <div class="label">Run Differential</div>
-        <div class="value" id="kpiRunDiff">—</div>
-        <div class="sub" id="kpiRunDiffSub">&nbsp;</div>
-      </div>
-      <div class="kpi">
-        <div class="label">WAR Leader</div>
-        <div class="value gold" id="kpiWar">—</div>
-        <div class="sub" id="kpiWarSub">&nbsp;</div>
+      <div class="status">
+        <span class="chip"><span class="dot" id="statusDot"></span><span id="statusText">Connecting…</span></span>
+        <span class="chip">Next check: <span id="nextRefresh" style="margin-left:4px">30 min</span></span>
+        <button id="refreshBtn" type="button">Refresh now</button>
       </div>
     </div>
 
-    <div class="section-label">Visualizations</div>
-    <div class="grid-2">
-      <div class="card">
-        <h3>Offense · Launch Angle × Exit Velocity</h3>
-        <div class="hint">Every tracked batted ball this season, per key batter. The gold band marks the classic barrel launch-angle window.</div>
-        <div class="chart-wrap"><canvas id="scatterChart" role="img" aria-label="Scatter plot of launch angle versus exit velocity"></canvas></div>
-      </div>
-      <div class="card">
-        <h3>Pitching · Velocity &amp; Spin Trend</h3>
-        <div class="hint">Per-game average pitch velocity (left axis, solid) and spin rate (right axis, dashed).</div>
-        <div class="chart-wrap"><canvas id="trendChart" role="img" aria-label="Line chart of pitch velocity and spin rate by game"></canvas></div>
-      </div>
+    <div class="banner" id="fallbackBanner">
+      <strong>Fallback active</strong>
+      <span id="fallbackBannerText">One or more analytics feeds failed their last scrape; affected fields carry an orange FALLBACK chip and show last-known or locally-modeled values.</span>
+    </div>
+    <div class="banner" id="sampleBanner">
+      <strong>Sample data</strong>
+      <span>The nightly <code style="color:var(--gold)">padres_live_data.json</code> feed wasn't found, so the platform loaded generated demo players and demo analytics. Host this file next to the pipeline output to go live.</span>
     </div>
 
-    <div class="grid-2" style="margin-top:14px">
-      <div class="card">
-        <h3>Head-to-Head Radar</h3>
-        <div class="hint">Each axis is scaled 0–100 against the best mark among all tracked players, so different stats share one scale.</div>
-        <div class="radar-controls">
-          <div>
-            <label for="radarA">Player A</label>
-            <select id="radarA"></select>
+    <div class="state hidden" id="emptyState">
+      <h2>Waiting for data</h2>
+      <p>Couldn't load <code>padres_live_data.json</code>. Place this file next to the JSON produced by the nightly pipeline, then refresh.</p>
+      <button class="primary" id="sampleBtn" type="button">Load demo mode</button>
+    </div>
+
+    <div id="dashboard" class="hidden">
+
+      <!-- ============ Executive summary (toggle) ============ -->
+      <div class="exec-panel" id="execPanel">
+        <div class="brief" id="execBrief"></div>
+      </div>
+
+      <div class="deep">
+
+      <!-- KPI strip -->
+      <div class="kpis">
+        <div class="kpi"><div class="label">Record / Win %</div><div class="value" id="kpiRecord">—</div><div class="sub" id="kpiRecordSub">&nbsp;</div></div>
+        <div class="kpi"><div class="label">NL West Rank</div><div class="value gold" id="kpiRank">—</div><div class="sub" id="kpiRankSub">&nbsp;</div></div>
+        <div class="kpi"><div class="label">Run Differential</div><div class="value" id="kpiRunDiff">—</div><div class="sub" id="kpiRunDiffSub">&nbsp;</div></div>
+        <div class="kpi"><div class="label">Roster Surplus Value <span class="model-chip" data-prov="surplus">MODEL v0</span></div><div class="value gold" id="kpiSurplus">—</div><div class="sub" id="kpiSurplusSub">&nbsp;</div></div>
+      </div>
+
+      <!-- ============ 01 Roster optimization ============ -->
+      <section class="section" id="roster">
+        <div class="section-head"><span class="idx">01</span><h3>Roster Optimization Engine</h3></div>
+        <p class="lede">Every active-roster player mapped by what he costs against what he produces. Up-left is the asset quadrant; down-right is the liability quadrant. Dot size scales with pitch volume.</p>
+        <div class="card">
+          <h4>Value vs. Cost <span class="model-chip" data-prov="salary">SALARY</span><span class="model-chip" data-prov="war">MODEL v0</span></h4>
+          <div class="hint">X: salary ($M) · Y: projected WAR. The gold guide line marks the sandbox market rate (<span class="dpw-echo">$8.0M</span>/WAR) — players above it out-earn their contracts.</div>
+          <div class="chart-wrap"><canvas id="valueChart" role="img" aria-label="Scatter of projected WAR against salary for the active roster"></canvas></div>
+        </div>
+      </section>
+
+      <!-- ============ 02 Trade simulator ============ -->
+      <section class="section" id="trade">
+        <div class="section-head"><span class="idx">02</span><h3>Trade Simulator</h3></div>
+        <p class="lede">Balance a mock package: pick the outgoing Padre, the counterparty, and slide the return until surplus values line up.</p>
+        <div class="card">
+          <h4>Mock Deal Builder <span class="model-chip" data-prov="salary">SALARY</span><span class="model-chip" data-prov="surplus">MODEL v0</span></h4>
+          <div class="hint">Return is expressed as a bundle of projected WAR (prospects + MLB pieces) priced at the sandbox market rate.</div>
+          <div class="trade">
+            <div class="side">
+              <h5>San Diego sends</h5>
+              <div class="controls" style="margin:0 0 8px">
+                <div class="field" style="flex:1"><label for="tradePlayer">Player</label><select id="tradePlayer"></select></div>
+              </div>
+              <div class="figure" id="tradeOutFigure">—</div>
+            </div>
+            <div class="vs" aria-hidden="true">⇄</div>
+            <div class="side">
+              <h5>Return from</h5>
+              <div class="controls" style="margin:0 0 8px">
+                <div class="field" style="flex:1"><label for="tradeTeam">Team</label><select id="tradeTeam"></select></div>
+              </div>
+              <label for="tradeSlider" style="font-size:11px;color:var(--slate);text-transform:uppercase;letter-spacing:.09em">Return package · projected WAR</label>
+              <input type="range" id="tradeSlider" min="0" max="12" step="0.1" value="3">
+              <div class="figure" id="tradeInFigure">—</div>
+            </div>
           </div>
-          <div>
-            <label for="radarB">Player B</label>
-            <select id="radarB"></select>
+          <div class="trade-verdict" id="tradeVerdict">—</div>
+          <div class="meter" aria-hidden="true"><i id="tradeMeter" style="width:50%"></i></div>
+        </div>
+      </section>
+
+      <!-- ============ 03 Pitch design lab ============ -->
+      <section class="section" id="pitch">
+        <div class="section-head"><span class="idx">03</span><h3>Pitch Design Lab</h3></div>
+        <p class="lede">Per-pitcher Stuff+ and Location+ on the FanGraphs 100-mean scale, plus a what-if console: add horizontal break to a pitch and read the modeled change in whiff rate.</p>
+        <div class="grid-2">
+          <div class="card">
+            <h4>Stuff+ / Location+ Board <span class="model-chip" data-prov="stuff">STUFF+</span></h4>
+            <div class="hint">100 = league average. Gold bars: Stuff+. Gray bars: Location+. Source: FanGraphs via the nightly pipeline.</div>
+            <div class="chart-wrap"><canvas id="stuffChart" role="img" aria-label="Bar chart of Stuff plus and Location plus per pitcher"></canvas></div>
+          </div>
+          <div class="card">
+            <h4>Break Simulator <span class="model-chip" data-prov="whiff">MODEL v0</span></h4>
+            <div class="hint">Slide to add horizontal break to the selected pitch. Whiff% response uses a diminishing-returns curve.</div>
+            <div class="controls">
+              <div class="field"><label for="pitchPlayer">Pitcher</label><select id="pitchPlayer"></select></div>
+              <div class="field"><label for="pitchType">Pitch</label><select id="pitchType"></select></div>
+            </div>
+            <label for="breakSlider" style="font-size:11px;color:var(--slate);text-transform:uppercase;letter-spacing:.09em">Added horizontal break: <b id="breakVal" style="color:var(--gold);font-family:var(--mono)">+0.0"</b></label>
+            <input type="range" id="breakSlider" min="0" max="4" step="0.1" value="0">
+            <div class="chart-wrap" style="height:230px;margin-top:12px"><canvas id="whiffChart" role="img" aria-label="Line chart of modeled whiff rate against added break"></canvas></div>
+            <div class="readout" id="whiffReadout" style="margin-top:8px">—</div>
           </div>
         </div>
-        <div class="chart-wrap" style="height:300px"><canvas id="radarChart" role="img" aria-label="Radar chart comparing two selected players"></canvas></div>
-      </div>
-      <div class="card">
-        <h3>Tracked Roster</h3>
-        <div class="hint">Click a column to sort. Gold cells mark the top value in that column. The full 26-man active roster is pulled automatically every night — trades and call-ups appear here on their own.</div>
-        <div class="table-scroll">
-          <table id="rosterTable" aria-label="Tracked roster statistics">
-            <thead><tr id="rosterHead"></tr></thead>
-            <tbody id="rosterBody"></tbody>
-          </table>
+      </section>
+
+      <!-- ============ 04 Damage opportunity — Gameday 13-zone ============ -->
+      <section class="section" id="damage">
+        <div class="section-head"><span class="idx">04</span><h3>Damage Opportunity Map</h3></div>
+        <p class="lede">Where a hitter's actual production trails his expected production against a pitch class, on the official Gameday zone geometry: rulebook zones 1–9 plus outer chase quadrants 11–14. Gold = untapped damage; gray = insufficient sample.</p>
+        <div class="card">
+          <h4>Strike-Zone Under-Performance <span class="model-chip" data-prov="damage">ZONES</span></h4>
+          <div class="hint">Catcher's view. Values are real per-zone (xwOBA − wOBA) × 1000 aggregated from Statcast pitch data by the nightly pipeline. Cells under <span id="minNEcho">5</span> PA are grayed out rather than shown as zero.</div>
+          <div class="controls">
+            <div class="field"><label for="damagePlayer">Hitter</label><select id="damagePlayer"></select></div>
+            <div class="field"><label for="damagePitch">vs. pitch class</label><select id="damagePitch">
+              <option value="ff_high">High-spin four-seam</option>
+              <option value="sl_sweep">Sweeper / slider</option>
+              <option value="ch_split">Changeup / splitter</option>
+              <option value="cb">Curveball</option>
+              <option value="si">Sinker</option>
+            </select></div>
+          </div>
+          <div class="zone-wrap">
+            <div class="zone-svg-box"><svg id="zoneSvg" width="300" height="300" viewBox="0 0 300 300" role="img" aria-label="Gameday thirteen zone strike zone heat map"></svg></div>
+            <div class="zone-legend">
+              <div><b style="color:var(--white)">Reading the map</b></div>
+              <div class="scale"><span class="swatch" style="background:var(--nosample)"></span><span>insufficient sample (&lt; min PA)</span></div>
+              <div class="scale"><span class="swatch" style="background:#3A2D23"></span><span>at / above expected</span></div>
+              <div class="scale"><span class="swatch" style="background:#8a6a1d"></span><span>modest gap</span></div>
+              <div class="scale"><span class="swatch" style="background:#FFC425"></span><span>largest untapped damage</span></div>
+              <p id="zoneNote" style="margin-top:10px"></p>
+              <p style="margin-top:8px;font-size:11px">Zone numbering follows the MLB Gameday convention as implemented in the pipeline (1–9 catcher's view, 11–14 outer corners) — verify orientation against Statcast docs before external presentation.</p>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
+      </section>
+
+      <!-- ============ 05 Lineup optimizer ============ -->
+      <section class="section" id="lineup">
+        <div class="section-head"><span class="idx">05</span><h3>Lineup Optimizer</h3></div>
+        <p class="lede">Drag the cards to re-order the nine. Projected runs per game recompute instantly from a lineup-slot-weighted run estimator.</p>
+        <div class="card">
+          <h4>Batting Order Console <span class="model-chip" data-prov="lineup">MODEL v0</span></h4>
+          <div class="hint">OI = offense index (100 = roster average), derived from exit-velocity and contact volume. Slot weights follow expected plate appearances and leverage by lineup position.</div>
+          <div class="lineup">
+            <div class="lineup-list" id="lineupList"></div>
+            <div class="lineup-out">
+              <div style="font-size:11px;color:var(--slate);text-transform:uppercase;letter-spacing:.12em">Projected runs / game <span class="model-chip" data-prov="lineup">MODEL v0</span></div>
+              <div class="big" id="lineupRuns">—</div>
+              <div class="cmp" id="lineupCompare">—</div>
+              <button id="lineupBest" type="button" style="margin-top:12px">Auto-sort to model optimum</button>
+              <button id="lineupReset" class="ghost" type="button" style="margin-top:6px">Reset</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 06 Bullpen leverage ============ -->
+      <section class="section" id="bullpen">
+        <div class="section-head"><span class="idx">06</span><h3>Bullpen Leverage Planner</h3></div>
+        <p class="lede">High-leverage late-game scenarios matched against available arms. Scores blend live Stuff+ (when fetched) with a modeled platoon fit; the gold cell is tonight's recommended matchup.</p>
+        <div class="card">
+          <h4>Leverage × Arm Matrix <span class="model-chip" data-prov="leverage">MODEL v0</span></h4>
+          <div class="hint">LI = leverage index of the scenario. Fit score 0–100; hover any cell for the components.</div>
+          <div class="matrix-scroll">
+            <table class="matrix" id="bullpenMatrix" aria-label="Matrix of bullpen fit scores by scenario"></table>
+          </div>
+        </div>
+      </section>
+
+      </div><!-- /.deep -->
+    </div><!-- /#dashboard -->
+
+    <footer>
+      <span class="lock">●</span> Internal evaluation build · Season <span id="footSeason">—</span> ·
+      Feed: <span style="font-family:var(--mono)">padres_live_data.json</span> schema v3
+      (MLB Stats API · Baseball Savant · FanGraphs · Spotrac).
+      Fields with no chip are live fetched values; <span class="model-chip fb">FALLBACK</span> marks a failed scrape
+      (last-known or locally-modeled value shown); <span class="model-chip">MODEL v0</span> marks metrics that still
+      have no live feed source (projected WAR, whiff response, lineup runs, leverage fit) — placeholder math,
+      not decision-grade. Salary figures originate from Spotrac estimates; verify decision-grade numbers
+      against primary sources.
+    </footer>
   </div>
-</main>
-
-<footer>
-  <span id="footerMeta">Data: pybaseball pipeline (Baseball-Reference, FanGraphs, Baseball Savant).</span>
-</footer>
-
+</div>
 <script>
 "use strict";
-
 /* =========================================================================
-   Padres Live Analytics — data layer
-   Reads padres_live_data.json (the output of update_padres_stats.py),
-   re-checks it every 30 minutes without reloading the page, and only
-   re-renders when the payload's generated_at_utc timestamp changes.
+   PADRES FRONT OFFICE — application code (schema v3)
+   1. UTIL    — DOM/number helpers, name normalization, instant tooltips
+   2. DATA    — feed loader + FEED accessors with per-field provenance:
+                "live" (fetched), "fallback" (stale/unmatched → last-known
+                or local v0 math), "model" (no feed source exists yet)
+   3. MODELS  — v0 formulas retained ONLY as documented fallbacks for
+                fields whose scrape failed, plus metrics with no feed
+   4. VIEWS   — one render function per module
+   5. BOOT    — refresh loop, sandbox, nav, executive toggle
    ========================================================================= */
 
-const DATA_URL = "padres_live_data.json";
-const REFRESH_MS = 30 * 60 * 1000; // 30 minutes
+/* ------------------------------ 1. UTIL ------------------------------ */
+const $ = (id) => document.getElementById(id);
+const fmt = (v, d = 1) => (v == null || Number.isNaN(v)) ? "—" : Number(v).toFixed(d);
+const money = (m) => (m == null) ? "—" : "$" + Number(m).toFixed(1) + "M";
+const num = (v) => { if (v == null || v === "") return null; const n = Number(v); return Number.isFinite(n) ? n : null; };
+const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const mean = (a) => a.length ? a.reduce((s, v) => s + v, 0) / a.length : null;
 
-const GOLD = "#FFC425";
-const WHITE = "#FFFFFF";
-const SAND = "#C9BAA8";
-const SERIES_COLORS = [GOLD, WHITE, SAND, "#E8A33D", "#9C8C79", "#FFDD7A"];
+/* Mirrors normalize_name() in update_padres_stats.py so cross-source
+   player keys (Spotrac / FanGraphs / MLB roster) match identically. */
+function normName(name) {
+  if (!name) return "";
+  let s = String(name).normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+  s = s.toLowerCase().replace(/[.'`\u2019]/g, "").replace(/\s+/g, " ").trim();
+  return s.replace(/\s+(jr|sr|ii|iii|iv)$/, "");
+}
 
-const state = {
-  data: null,
-  isSample: false,
-  lastGeneratedAt: null,
-  nextRefreshAt: Date.now() + REFRESH_MS,
-  charts: { scatter: null, trend: null, radar: null },
-  sort: { key: null, dir: -1 },
-};
+/* Deterministic hash → [0,1). Used ONLY by v0 fallback formulas. */
+function hash01(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return ((h >>> 0) % 100000) / 100000;
+}
 
-/* ---------- Chart.js global theme ---------- */
+const tip = $("tip");
+function bindTip(el, htmlFn) {
+  el.addEventListener("mouseenter", () => { tip.innerHTML = htmlFn(); tip.style.display = "block"; });
+  el.addEventListener("mousemove", (e) => {
+    const pad = 14, w = tip.offsetWidth, h = tip.offsetHeight;
+    tip.style.left = clamp(e.clientX + pad, 4, innerWidth - w - 4) + "px";
+    tip.style.top  = clamp(e.clientY + pad, 4, innerHeight - h - 4) + "px";
+  });
+  el.addEventListener("mouseleave", () => { tip.style.display = "none"; });
+}
+
+const GOLD = "#FFC425", WHITE = "#FFFFFF", SAND = "#C9BAA8", SLATE = "#8E8A85";
+const NOSAMPLE = "#55504B";
+function hexA(hex, a) {
+  const h = hex.replace("#", "");
+  return "rgba(" + parseInt(h.slice(0,2),16) + "," + parseInt(h.slice(2,4),16) + "," + parseInt(h.slice(4,6),16) + "," + a + ")";
+}
 if (window.Chart) {
+  Chart.defaults.animation = false;                       /* zero animation */
   Chart.defaults.color = SAND;
-  Chart.defaults.font.family = "'Barlow', 'Segoe UI', system-ui, sans-serif";
+  Chart.defaults.font.family = "'Barlow','Segoe UI',system-ui,sans-serif";
   Chart.defaults.borderColor = "rgba(255,255,255,0.07)";
+  Chart.defaults.plugins.tooltip.animation = false;
+  Chart.defaults.plugins.tooltip.backgroundColor = "#3A2D23";
+  Chart.defaults.plugins.tooltip.borderColor = "rgba(255,196,37,0.16)";
+  Chart.defaults.plugins.tooltip.borderWidth = 1;
+  Chart.defaults.plugins.tooltip.titleColor = GOLD;
   Chart.defaults.plugins.legend.labels.boxWidth = 10;
   Chart.defaults.plugins.legend.labels.boxHeight = 10;
 }
 
-/* ---------- helpers ---------- */
-const $ = (id) => document.getElementById(id);
-const fmt = (v, d = 1) => (v == null || Number.isNaN(v)) ? "—" : Number(v).toFixed(d);
-const num = (v) => {
-  if (v == null || v === "") return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
+/* ------------------------------ 2. DATA ------------------------------ */
+const DATA_URL = "padres_live_data.json";
+const REFRESH_MS = 30 * 60 * 1000;
+
+const state = {
+  data: null, isSample: false, lastGeneratedAt: null,
+  nextRefreshAt: Date.now() + REFRESH_MS,
+  charts: {}, players: [], batters: [], pitchers: [],
+  lineup: [], lineupBase: [],
+  /* sandbox-editable assumptions (seeded from analytics.assumptions) */
+  assumptions: { dollarsPerWar: 8.0, feedDollarsPerWar: 8.0,
+                 highSpinRpm: 2400, zoneMinN: 5 },
+  /* per-field provenance summaries for the chips */
+  prov: {},
 };
-const esc = (s) => String(s).replace(/[&<>"']/g, c =>
-  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-function setStatus(kind, text) {
-  const dot = $("statusDot");
-  dot.className = "dot" + (kind === "live" ? " live" : kind === "err" ? " err" : "");
-  $("statusText").textContent = text;
-}
-
-function playersList(data) {
-  // Schema v2: players live under data.player_deep_dive, keyed by name, with
-  // per-role statcast blocks ({ summary, events }). Two-way players produce
-  // one entry per role so every chart can treat entries uniformly.
+function adaptPlayers(data) {
   const out = [];
-  const deepDive = (data && data.player_deep_dive) || {};
-  for (const [name, prof] of Object.entries(deepDive)) {
+  const dd = (data && data.player_deep_dive) || {};
+  for (const [name, prof] of Object.entries(dd)) {
     if (!prof) continue;
     const roles = Array.isArray(prof.roles) && prof.roles.length ? prof.roles : ["batter"];
     for (const role of roles) {
@@ -482,490 +725,851 @@ function playersList(data) {
       if (block.error) continue;
       out.push({
         name: roles.length > 1 ? name + (role === "batter" ? " (bat)" : " (pit)") : name,
-        role,
-        position: prof.position || null,
+        baseName: name, norm: normName(name), role,
+        position: prof.position || (role === "pitcher" ? "P" : "—"),
+        mlbamId: prof.mlbam_id || 0,
         summary: block.summary || {},
         events: block.events || [],
+        zoneDamage: role === "batter" ? (prof.zone_damage || null) : null,
+        zoneDamageStale: !!prof.zone_damage_stale,
       });
     }
   }
   return out;
 }
 
-/* ---------- fetch + refresh loop ---------- */
+/* FEED — accessors over analytics.* with provenance on every read.
+   Each returns { value..., src: "live" | "fallback" | "model" }.      */
+const FEED = {
+  analytics() { return (state.data && state.data.analytics) || {}; },
+
+  salariesIndex: null, stuffIndex: null,
+
+  rebuildIndexes() {
+    const a = this.analytics();
+    this.salariesIndex = {}; this.stuffIndex = {};
+    const sal = (a.salaries && a.salaries.players) || {};
+    for (const [n, v] of Object.entries(sal)) this.salariesIndex[normName(n)] = v;
+    const st = (a.pitching_models && a.pitching_models.players) || {};
+    for (const [n, v] of Object.entries(st)) this.stuffIndex[normName(n)] = v;
+  },
+
+  salaryM(p) {                       /* → $M */
+    const a = this.analytics().salaries || {};
+    const usd = this.salariesIndex ? this.salariesIndex[p.norm] : null;
+    if (usd != null) {
+      return { value: +(usd / 1e6).toFixed(2),
+               src: a.stale ? "fallback" : "live",
+               why: a.stale ? "feed stale — last known Spotrac value" : "Spotrac via nightly pipeline" };
+    }
+    return { value: MODELS.salaryM_v0(p), src: "fallback",
+             why: "player not in salary feed — local v0 estimate" };
+  },
+
+  stuff(p) {                         /* → {stuff_plus, location_plus} */
+    const a = this.analytics().pitching_models || {};
+    const row = this.stuffIndex ? this.stuffIndex[p.norm] : null;
+    if (row && row.stuff_plus != null) {
+      return { stuff: row.stuff_plus,
+               location: row.location_plus != null ? row.location_plus : MODELS.locationPlus_v0(p),
+               locationLive: row.location_plus != null,
+               src: a.stale ? "fallback" : "live",
+               why: a.stale ? "feed stale — last known FanGraphs value" : "FanGraphs via nightly pipeline" };
+    }
+    return { stuff: MODELS.stuffPlus_v0(p, state.pitchers),
+             location: MODELS.locationPlus_v0(p), locationLive: false,
+             src: "fallback", why: "pitcher not in Stuff+ feed — local v0 estimate" };
+  },
+
+  zoneDamage(p, pitchClass) {        /* → {zones:{"1":{...}}} | null */
+    const zd = p.zoneDamage && p.zoneDamage[pitchClass];
+    if (zd && zd.zones && Object.keys(zd.zones).length) {
+      return { zones: zd.zones,
+               src: p.zoneDamageStale ? "fallback" : "live",
+               why: p.zoneDamageStale ? "fresh Statcast pull empty — last known grid" : "Statcast per-pitch aggregation (pipeline)" };
+    }
+    return null;                     /* no feed → view falls back to v0 */
+  },
+};
+
 async function loadData(manual) {
   setStatus("", manual ? "Refreshing…" : "Checking for updates…");
   try {
     const res = await fetch(DATA_URL + "?t=" + Date.now(), { cache: "no-store" });
     if (!res.ok) throw new Error("HTTP " + res.status);
     const json = await res.json();
-
     const stamp = (json && json.meta && json.meta.generated_at_utc) || null;
     const changed = stamp !== state.lastGeneratedAt || state.isSample || !state.data;
-    state.isSample = false;
-    state.lastGeneratedAt = stamp;
-    state.data = json;
+    state.isSample = false; state.lastGeneratedAt = stamp; state.data = json;
     $("sampleBanner").classList.remove("show");
-
     if (changed) renderAll(json);
     const when = stamp ? new Date(stamp) : null;
     setStatus("live", when && !Number.isNaN(when.getTime())
-      ? "Live · data generated " + when.toLocaleString()
-      : "Live · data loaded");
+      ? "Live · feed generated " + when.toLocaleString() : "Live · feed loaded");
   } catch (err) {
-    if (!state.data) {
-      $("emptyState").classList.remove("hidden");
-      $("dashboard").classList.add("hidden");
-      setStatus("err", "No data file found");
-    } else {
-      setStatus("err", "Update check failed — showing last loaded data");
-    }
-    console.warn("padres dashboard: fetch failed:", err);
+    console.warn("front office: fetch failed:", err);
+    if (!state.data) { loadSample(); setStatus("err", "No live feed — demo mode"); }
+    else setStatus("err", "Update check failed — showing last loaded data");
   } finally {
     state.nextRefreshAt = Date.now() + REFRESH_MS;
   }
 }
 
-setInterval(() => loadData(false), REFRESH_MS);
+function loadSample() {
+  state.data = makeSampleData();
+  state.isSample = true; state.lastGeneratedAt = null;
+  $("sampleBanner").classList.add("show");
+  renderAll(state.data);
+}
 
-// Countdown chip (cosmetic, updates every 30s)
-setInterval(() => {
-  const mins = Math.max(0, Math.round((state.nextRefreshAt - Date.now()) / 60000));
-  $("nextRefresh").textContent = mins <= 0 ? "soon" : mins + " min";
-}, 30 * 1000);
+function setStatus(kind, text) {
+  $("statusDot").className = "dot" + (kind === "live" ? " live" : kind === "err" ? " err" : "");
+  $("statusText").textContent = text;
+}
 
-$("refreshBtn").addEventListener("click", () => loadData(true));
+/* ------------------------------ 3. MODELS ------------------------------
+   v0 formulas. After the v3 pipeline these serve ONLY as (a) fallbacks
+   when a scrape fails / a player is unmatched, and (b) the math for
+   metrics that still have no live source (projected WAR, whiff response,
+   offense index / lineup runs, leverage fit). Deterministic on purpose.
+   ---------------------------------------------------------------------- */
+const MODELS = {
+  salaryM_v0(p) {
+    const vol = num(p.summary.pitches_seen ?? p.summary.pitches_thrown) || 0;
+    const base = 0.76 + hash01("sal:" + p.baseName) * 22;
+    return +(clamp(base * (0.7 + Math.min(vol, 2400) / 2400 * 0.6), 0.76, 28)).toFixed(1);
+  },
+  projWAR(p) {
+    const s = p.summary;
+    if (p.role === "batter") {
+      const vol = (num(s.pitches_seen) || 0) / 2200;
+      const ev  = clamp(((num(s.avg_exit_velocity) || 87) - 84) / 8, 0, 1.4);
+      const hr  = Math.min((num(s.home_runs) || 0) / 30, 1.2);
+      return +clamp(vol * 2.2 + ev * 2.4 + hr * 1.6 + hash01("war:" + p.name) * 0.8 - 0.4, -0.5, 7.5).toFixed(1);
+    }
+    const vol  = (num(s.pitches_thrown) || 0) / 2600;
+    const velo = clamp(((num(s.avg_velocity) || 92) - 90) / 6, 0, 1.3);
+    const k    = Math.min((num(s.strikeouts) || 0) / 180, 1.2);
+    return +clamp(vol * 2.0 + velo * 1.8 + k * 2.0 + hash01("war:" + p.name) * 0.8 - 0.3, -0.5, 6.5).toFixed(1);
+  },
+  surplusM(p) {          /* live salary when available; WAR stays modeled */
+    const sal = FEED.salaryM(p);
+    return { value: +(this.projWAR(p) * state.assumptions.dollarsPerWar - sal.value).toFixed(1),
+             salarySrc: sal.src };
+  },
+  stuffPlus_v0(p, staff) {
+    const v = num(p.summary.avg_velocity), sp = num(p.summary.avg_spin_rate);
+    const vs = staff.map(q => num(q.summary.avg_velocity)).filter(x => x != null);
+    const ss = staff.map(q => num(q.summary.avg_spin_rate)).filter(x => x != null);
+    const z = (x, arr) => {
+      if (x == null || arr.length < 2) return 0;
+      const m = mean(arr), sd = Math.sqrt(mean(arr.map(a => (a - m) ** 2))) || 1;
+      return (x - m) / sd;
+    };
+    return Math.round(100 + z(v, vs) * 7 + z(sp, ss) * 5);
+  },
+  locationPlus_v0(p) { return Math.round(92 + hash01("loc:" + p.name) * 18); },
+  baseWhiff(p, pitchType) {
+    const spin = num(p.summary.avg_spin_rate) || 2300;
+    const byPitch = { SL: 4, ST: 5, CU: 3, FF: 0, SI: -2, CH: 3, FS: 4 };
+    return +(24 + (spin - 2300) / 90 + (byPitch[pitchType] ?? 1) + hash01("wh:" + p.name + pitchType) * 4).toFixed(1);
+  },
+  whiffDelta(inches) { return +(2.6 * (1 - Math.exp(-0.55 * inches))).toFixed(2); },
+  damageZones_v0(p, pitchClass) {
+    /* v0 fallback on the SAME 13-zone geometry as the feed. */
+    const shape = {
+      ff_high:  (r) => 1.25 - r * 0.28,
+      sl_sweep: (r, c) => 0.7 + r * 0.16 + (c === 2 ? 0.2 : 0),
+      ch_split: (r) => 0.7 + r * 0.2,
+      cb:       (r) => 0.8 + Math.abs(r - 1) * 0.15,
+      si:       (r, c) => 0.8 + (c === 0 ? 0.3 : 0),
+    }[pitchClass] || (() => 1);
+    const zones = {};
+    const put = (z, r, c) => {
+      const raw = hash01("dmg:" + p.name + ":" + pitchClass + ":" + z);
+      const n = 4 + Math.round(raw * 40);
+      const gap = Math.round(clamp((raw * 90 - 18) * shape(r, c), -25, 95));
+      zones[z] = n < state.assumptions.zoneMinN
+        ? { n, woba: null, xwoba: null, gap_x1000: null }
+        : { n, woba: 0.32, xwoba: +(0.32 + gap / 1000).toFixed(3), gap_x1000: gap };
+    };
+    let z = 1;
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) put(String(z++), r, c);
+    [["11",0,0],["12",0,2],["13",2,0],["14",2,2]].forEach(([zz,r,c]) => put(zz, r, c));
+    return { zones, src: "model", why: "no zone_damage in feed — local v0 illustration" };
+  },
+  offenseIndex(p, batters) {
+    const evs = batters.map(b => num(b.summary.avg_exit_velocity)).filter(x => x != null);
+    const m = mean(evs) || 88;
+    const ev = num(p.summary.avg_exit_velocity) || m;
+    const hr = Math.min((num(p.summary.home_runs) || 0) / 25, 1);
+    return Math.round(100 + (ev - m) * 4 + hr * 8 + (hash01("oi:" + p.name) - 0.5) * 6);
+  },
+  LINEUP_WEIGHTS: [1.16, 1.12, 1.09, 1.07, 1.03, 0.99, 0.95, 0.91, 0.88],
+  lineupRuns(order, batters) {
+    const w = this.LINEUP_WEIGHTS;
+    let s = 0, sw = 0;
+    order.forEach((p, i) => {
+      const oi = this.offenseIndex(p, batters) / 100;
+      const seq = i < 4 ? 1 + (oi - 1) * 0.35 : 1;
+      s += w[i] * oi * seq; sw += w[i];
+    });
+    return +(4.3 * s / sw).toFixed(2);
+  },
+  bestLineup(b9, batters) {
+    return [...b9].sort((a, b) => this.offenseIndex(b, batters) - this.offenseIndex(a, batters));
+  },
+  leverageFit(arm, scenario) {
+    const st = FEED.stuff(arm);                    /* live Stuff+ when fetched */
+    const platoon = (hash01("plt:" + arm.name + scenario.side) - 0.5) * 22;
+    const fatigue = hash01("ftg:" + arm.name) * 8;
+    return { value: Math.round(clamp((st.stuff - 78) * 1.9 + platoon - fatigue + scenario.li * 4, 20, 99)),
+             stuffSrc: st.src };
+  },
 
-/* =========================================================================
-   Rendering
-   ========================================================================= */
+  NOTES: {
+    salary:  { live: "Spotrac base salary via nightly pipeline (estimate — verify decision-grade figures against primary sources).",
+               fallback: "Salary scrape failed or player unmatched — showing last-known Spotrac value or the local v0 estimate.",
+               model: "Salary v0 placeholder." },
+    war:     { model: "Projected WAR v0 — local placeholder blend of workload + quality proxies. No live projection feed yet." },
+    surplus: { model: "Surplus = projWAR (Model v0) × sandbox $/WAR − salary (live when fetched)." },
+    stuff:   { live: "FanGraphs Stuff+/Location+ via nightly pipeline (100 = league average).",
+               fallback: "FanGraphs scrape failed or pitcher unmatched — last-known value or local v0 estimate." },
+    whiff:   { model: "ΔWhiff% v0 = 2.6 × (1 − e^(−0.55 × added inches)) — illustrative curve, no live source." },
+    damage:  { live: "Real per-zone (xwOBA − wOBA) aggregated from Statcast pitch data by the pipeline.",
+               fallback: "Fresh Statcast pull empty — showing the last-known grid.",
+               model: "No zone_damage in feed — local v0 illustration." },
+    lineup:  { model: "R/G v0 = 4.3 × slot-weighted offense index (Markov-lite). No live source." },
+    leverage:{ model: "Fit v0 = 1.9×(Stuff+ − 78) + platoon − fatigue + 4×LI. Stuff+ input is live when fetched; the rest is modeled." },
+  },
+};
+
+/* ------------------------------ 4. VIEWS ------------------------------ */
+function destroy(name) { if (state.charts[name]) { state.charts[name].destroy(); state.charts[name] = null; } }
+
 function renderAll(data) {
   $("emptyState").classList.add("hidden");
   $("dashboard").classList.remove("hidden");
+
+  state.players  = adaptPlayers(data);
+  state.batters  = state.players.filter(p => p.role === "batter");
+  state.pitchers = state.players.filter(p => p.role === "pitcher");
+  FEED.rebuildIndexes();
+  seedAssumptions(data);
+  computeProvenance();
+
   renderKPIs(data);
-  renderScatter(data);
-  renderTrend(data);
-  renderRadarControls(data);
-  renderRoster(data);
-  const season = data && data.meta ? data.meta.season : null;
-  $("footerMeta").textContent =
-    "Season " + (season != null ? season : "—") +
-    " · Data: pybaseball pipeline (Baseball-Reference, FanGraphs, Baseball Savant)." +
-    (state.isSample ? " Currently showing generated sample values." : "");
+  renderValueChart();
+  initTrade();
+  renderStuffBoard();
+  initPitchLab();
+  initDamage();
+  initLineup();
+  renderBullpen();
+  renderExecBrief(data);
+  updateChips();
+
+  const season = data?.meta?.season;
+  $("footSeason").textContent = season ?? "—";
+  $("sessionStamp").textContent = "FEED " + (state.isSample ? "DEMO" : (state.lastGeneratedAt || "").slice(0, 10) || "LIVE");
+}
+
+/* Seed sandbox from analytics.assumptions (feed wins unless user edited). */
+function seedAssumptions(data) {
+  const a = (data?.analytics?.assumptions) || {};
+  const feedDpw = num(a.dollars_per_war_musd);
+  if (feedDpw != null) {
+    if (state.assumptions.dollarsPerWar === state.assumptions.feedDollarsPerWar)
+      state.assumptions.dollarsPerWar = feedDpw;         /* not user-edited */
+    state.assumptions.feedDollarsPerWar = feedDpw;
+  }
+  state.assumptions.highSpinRpm = num(a.high_spin_ff_rpm) ?? state.assumptions.highSpinRpm;
+  state.assumptions.zoneMinN = num(a.zone_min_denominator) ?? state.assumptions.zoneMinN;
+  syncSandboxUI();
+}
+
+function syncSandboxUI() {
+  const A = state.assumptions;
+  $("dpwSlider").value = A.dollarsPerWar;
+  $("dpwSlider").style.setProperty("--fill", ((A.dollarsPerWar - 4) / 10 * 100) + "%");
+  $("dpwVal").textContent = "$" + A.dollarsPerWar.toFixed(1) + "M";
+  $("rpmVal").textContent = A.highSpinRpm;
+  $("minNVal").textContent = A.zoneMinN;
+  $("minNEcho").textContent = A.zoneMinN;
+  document.querySelectorAll(".dpw-echo").forEach(el => el.textContent = "$" + A.dollarsPerWar.toFixed(1) + "M");
+}
+
+/* Provenance summary per chip key → "live" | "fallback" | "model". */
+function computeProvenance() {
+  const salLive = state.players.filter(p => FEED.salaryM(p).src === "live").length;
+  const salAny  = state.players.length || 1;
+  const stLive  = state.pitchers.filter(p => FEED.stuff(p).src === "live").length;
+  const zdLive  = state.batters.filter(p => p.zoneDamage && !p.zoneDamageStale).length;
+  const zdStale = state.batters.filter(p => p.zoneDamage && p.zoneDamageStale).length;
+  const aSal = FEED.analytics().salaries || {};
+  const aSt  = FEED.analytics().pitching_models || {};
+
+  state.prov = {
+    salary: aSal.stale ? "fallback" : (salLive === 0 ? "fallback" : (salLive < salAny ? "fallback" : "live")),
+    stuff:  aSt.stale ? "fallback" : (stLive === 0 ? "fallback" : (stLive < state.pitchers.length ? "fallback" : "live")),
+    damage: zdLive > 0 ? (zdStale > 0 ? "fallback" : "live") : (zdStale > 0 ? "fallback" : "model"),
+    war: "model", surplus: "model", whiff: "model", lineup: "model", leverage: "model",
+    _counts: { salLive, salAny, stLive, stAny: state.pitchers.length, zdLive, zdStale, zdAny: state.batters.length },
+  };
+
+  const anyFallback = ["salary", "stuff", "damage"].some(k => state.prov[k] === "fallback");
+  $("fallbackBanner").classList.toggle("show", anyFallback && !state.isSample);
+  if (anyFallback) {
+    const bits = [];
+    if (state.prov.salary === "fallback") bits.push("salaries " + salLive + "/" + salAny + " live");
+    if (state.prov.stuff === "fallback") bits.push("Stuff+ " + stLive + "/" + state.pitchers.length + " live");
+    if (state.prov.damage === "fallback") bits.push("zone grids " + zdStale + " stale");
+    $("fallbackBannerText").textContent =
+      "Partial feed coverage (" + bits.join(" · ") + "). Orange FALLBACK chips mark affected fields; values are last-known or locally modeled.";
+  }
+  $("provSummary").textContent =
+    "SAL " + salLive + "/" + salAny + " · STF " + stLive + "/" + state.pitchers.length +
+    " · ZON " + zdLive + "/" + state.batters.length;
+}
+
+/* Chips: live → hidden; fallback → orange; model → gold MODEL v0. */
+function updateChips(scope) {
+  (scope || document).querySelectorAll(".model-chip[data-prov]").forEach(chip => {
+    const key = chip.dataset.prov;
+    const src = state.prov[key] || "model";
+    chip.classList.toggle("live", src === "live");
+    chip.classList.toggle("fb", src === "fallback");
+    chip.textContent = src === "fallback" ? "FALLBACK" : "MODEL v0";
+    if (!chip.dataset.bound) {
+      chip.dataset.bound = "1";
+      bindTip(chip, () => {
+        const s = state.prov[key] || "model";
+        const note = (MODELS.NOTES[key] || {})[s] || (MODELS.NOTES[key] || {}).model || "";
+        const c = state.prov._counts || {};
+        let cov = "";
+        if (key === "salary") cov = "<br>coverage " + c.salLive + "/" + c.salAny + " players live";
+        if (key === "stuff")  cov = "<br>coverage " + c.stLive + "/" + c.stAny + " pitchers live";
+        if (key === "damage") cov = "<br>coverage " + c.zdLive + "/" + c.zdAny + " hitters live" + (c.zdStale ? " · " + c.zdStale + " stale" : "");
+        return "<span class='t" + (s === "fallback" ? " fb" : "") + "'>" +
+               (s === "fallback" ? "Fallback value" : "Placeholder model") + "</span><br>" + esc(note) + cov;
+      });
+    }
+  });
 }
 
 /* ---------- KPIs ---------- */
-function findPadresStandingsRow(rows) {
+function findPadresRow(rows) {
   if (!Array.isArray(rows)) return { row: null, rank: null, total: 0 };
   for (let i = 0; i < rows.length; i++) {
-    const r = rows[i];
-    const hit = Object.values(r).some(v => typeof v === "string" && /padres/i.test(v));
-    if (hit) return { row: r, rank: i + 1, total: rows.length };
+    if (Object.values(rows[i]).some(v => typeof v === "string" && /padres/i.test(v)))
+      return { row: rows[i], rank: i + 1, total: rows.length };
   }
   return { row: null, rank: null, total: rows.length };
 }
-
-const ordinal = (n) => {
-  const s = ["th", "st", "nd", "rd"], v = n % 100;
-  return n + (s[(v - 20) % 10] || s[v] || s[0]);
-};
+const ordinal = (n) => { const s = ["th","st","nd","rd"], v = n % 100; return n + (s[(v-20)%10] || s[v] || s[0]); };
 
 function renderKPIs(data) {
-  // Record / Win% / Rank — B-Ref tables arrive already sorted by the pipeline.
-  const teamStats = (data && data.team_stats) || {};
-  const st = findPadresStandingsRow(teamStats.standings_nl_west);
+  const ts = data?.team_stats || {};
+  const st = findPadresRow(ts.standings_nl_west);
   if (st.row) {
     const w = num(st.row.W), l = num(st.row.L);
-    const pct = num(st.row["W-L%"]) != null ? num(st.row["W-L%"])
-              : (w != null && l != null && w + l > 0 ? w / (w + l) : null);
+    const pct = num(st.row["W-L%"]) ?? (w != null && l != null && w + l > 0 ? w / (w + l) : null);
     $("kpiRecord").textContent = (w != null && l != null) ? w + "–" + l : "—";
     $("kpiRecordSub").textContent = pct != null ? pct.toFixed(3).replace(/^0/, "") + " win pct" : "";
     $("kpiRank").textContent = st.rank ? ordinal(st.rank) : "—";
     const gb = st.row.GB != null ? String(st.row.GB) : null;
     $("kpiRankSub").textContent = gb ? gb + " GB · " + st.total + " teams" : "of " + st.total + " NL West teams";
   } else {
-    $("kpiRecord").textContent = "—";
-    $("kpiRecordSub").textContent = "standings unavailable";
-    $("kpiRank").textContent = "—";
-    $("kpiRankSub").textContent = "";
+    $("kpiRecord").textContent = "—"; $("kpiRecordSub").textContent = "standings unavailable";
+    $("kpiRank").textContent = "—";   $("kpiRankSub").textContent = "";
   }
-
-  // Run differential = team runs scored (FanGraphs batting) − runs allowed (pitching)
-  const bat = (teamStats.batting || [])[0] || {};
-  const pit = (teamStats.pitching || [])[0] || {};
+  const bat = (ts.batting || [])[0] || {}, pit = (ts.pitching || [])[0] || {};
   const rs = num(bat.R), ra = num(pit.R);
   if (rs != null && ra != null) {
     const diff = rs - ra;
     $("kpiRunDiff").textContent = (diff > 0 ? "+" : "") + diff;
     $("kpiRunDiff").classList.toggle("gold", diff > 0);
     $("kpiRunDiffSub").textContent = rs + " scored · " + ra + " allowed";
-  } else {
-    $("kpiRunDiff").textContent = "—";
-    $("kpiRunDiffSub").textContent = "needs R in team batting & pitching";
-  }
+  } else { $("kpiRunDiff").textContent = "—"; $("kpiRunDiffSub").textContent = "needs team R totals"; }
 
-  // WAR leader: uses per-player WAR if the payload carries it; the default
-  // pipeline ships team-level WAR only, so fall back to the team total.
-  const withWar = playersList(data)
-    .map(p => ({ name: p.name, war: num(p.summary.war != null ? p.summary.war : p.summary.WAR) }))
-    .filter(p => p.war != null)
-    .sort((a, b) => b.war - a.war);
-  if (withWar.length) {
-    $("kpiWar").textContent = withWar[0].name;
-    $("kpiWarSub").textContent = fmt(withWar[0].war, 1) + " WAR";
-  } else {
-    const tb = num(bat.WAR), tp = num(pit.WAR);
-    if (tb != null || tp != null) {
-      $("kpiWar").textContent = fmt((tb || 0) + (tp || 0), 1);
-      $("kpiWarSub").textContent = "team total (per-player WAR not in feed)";
-    } else {
-      $("kpiWar").textContent = "—";
-      $("kpiWarSub").textContent = "WAR not present in feed";
-    }
-  }
+  const total = state.players.reduce((s, p) => s + MODELS.surplusM(p).value, 0);
+  const c = state.prov._counts || {};
+  $("kpiSurplus").textContent = (total >= 0 ? "+" : "−") + "$" + Math.abs(total).toFixed(0) + "M";
+  $("kpiSurplusSub").textContent = c.salLive + "/" + c.salAny + " salaries live · WAR modeled · $" +
+    state.assumptions.dollarsPerWar.toFixed(1) + "M/WAR";
 }
 
-/* ---------- Scatter: launch angle vs exit velocity ---------- */
-// Subtle gold band across the "barrel" launch-angle window (~8–32°).
-const barrelBand = {
-  id: "barrelBand",
+/* ---------- 01 Value vs Cost ---------- */
+const marketLine = {
+  id: "marketLine",
   beforeDatasetsDraw(chart) {
-    const area = chart.chartArea, x = chart.scales.x;
-    if (!x || !area) return;
-    const x1 = x.getPixelForValue(8), x2 = x.getPixelForValue(32);
-    const ctx = chart.ctx;
+    const { chartArea: a, scales: { x, y }, ctx } = chart;
+    if (!a) return;
+    const dpw = state.assumptions.dollarsPerWar;
     ctx.save();
-    ctx.fillStyle = "rgba(255,196,37,0.06)";
-    ctx.fillRect(x1, area.top, x2 - x1, area.bottom - area.top);
+    ctx.strokeStyle = "rgba(255,196,37,0.35)"; ctx.setLineDash([6, 5]); ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(x.getPixelForValue(x.min), y.getPixelForValue(x.min / dpw));
+    ctx.lineTo(x.getPixelForValue(x.max), y.getPixelForValue(x.max / dpw));
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(255,196,37,0.7)";
+    ctx.font = "11px 'JetBrains Mono', monospace";
+    ctx.fillText("market rate · $" + dpw.toFixed(1) + "M / WAR (sandbox)", a.left + 8, a.top + 14);
     ctx.restore();
   },
 };
 
-function renderScatter(data) {
-  const batters = playersList(data).filter(p => p.role === "batter");
-  const datasets = batters.map((p, i) => ({
-    label: p.name,
-    data: p.events
-      .filter(e => num(e.launch_speed) != null && num(e.launch_angle) != null)
-      .map(e => ({ x: num(e.launch_angle), y: num(e.launch_speed), ev: e.events || e.description || "" })),
-    backgroundColor: hexA(SERIES_COLORS[i % SERIES_COLORS.length], 0.75),
-    borderColor: SERIES_COLORS[i % SERIES_COLORS.length],
-    pointRadius: 3.5,
-    pointHoverRadius: 6,
-  }));
-
-  destroy("scatter");
-  state.charts.scatter = new Chart($("scatterChart"), {
-    type: "scatter",
-    data: { datasets },
+function renderValueChart() {
+  const pts = state.players.map(p => {
+    const vol = num(p.summary.pitches_seen ?? p.summary.pitches_thrown) || 0;
+    const sal = FEED.salaryM(p), sur = MODELS.surplusM(p);
+    return {
+      x: sal.value, y: MODELS.projWAR(p),
+      r: clamp(4 + vol / 260, 4, 13),
+      name: p.name, pos: p.position, surplus: sur.value, role: p.role,
+      salSrc: sal.src,
+    };
+  });
+  destroy("value");
+  state.charts.value = new Chart($("valueChart"), {
+    type: "bubble",
+    data: { datasets: [
+      { label: "Batters",  data: pts.filter(p => p.role === "batter"),
+        backgroundColor: hexA(GOLD, .7),  borderColor: GOLD },
+      { label: "Pitchers", data: pts.filter(p => p.role === "pitcher"),
+        backgroundColor: hexA(WHITE, .55), borderColor: WHITE },
+    ]},
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: {
         legend: { position: "bottom" },
-        tooltip: { callbacks: { label: (c) =>
-          c.dataset.label + ": " + fmt(c.raw.y) + " mph @ " + fmt(c.raw.x) + "°" +
-          (c.raw.ev ? " · " + c.raw.ev : "") } },
+        tooltip: { callbacks: {
+          title: (items) => items[0].raw.name + " · " + items[0].raw.pos,
+          label: (c) => [
+            "salary " + money(c.raw.x) + (c.raw.salSrc === "live" ? " (Spotrac)" : " (FALLBACK)"),
+            "proj WAR " + fmt(c.raw.y) + " (modeled)",
+            "surplus " + (c.raw.surplus >= 0 ? "+" : "") + money(c.raw.surplus),
+          ],
+        }},
       },
       scales: {
-        x: { title: { display: true, text: "Launch angle (°)" }, min: -60, max: 70 },
-        y: { title: { display: true, text: "Exit velocity (mph)" }, suggestedMin: 40, suggestedMax: 120 },
+        x: { title: { display: true, text: "Salary ($M)" }, beginAtZero: true },
+        y: { title: { display: true, text: "Projected WAR (Model v0)" } },
       },
     },
-    plugins: [barrelBand],
+    plugins: [marketLine],
   });
 }
 
-/* ---------- Pitching trend: velocity + spin by game ---------- */
-function renderTrend(data) {
-  const pitchers = playersList(data).filter(p => p.role === "pitcher");
-  const labelsSet = new Set();
-  const perPitcher = pitchers.map(p => {
-    const byDate = new Map();
-    for (const e of p.events) {
-      const d = e.game_date;
-      if (!d) continue;
-      const speed = num(e.release_speed), spin = num(e.release_spin_rate);
-      if (!byDate.has(d)) byDate.set(d, { s: 0, sn: 0, r: 0, rn: 0 });
-      const g = byDate.get(d);
-      if (speed != null) { g.s += speed; g.sn++; }
-      if (spin != null) { g.r += spin; g.rn++; }
-      labelsSet.add(d);
+/* ---------- 02 Trade simulator ---------- */
+const MLB_TEAMS = ["Arizona Diamondbacks","Atlanta Braves","Baltimore Orioles","Boston Red Sox","Chicago Cubs","Chicago White Sox","Cincinnati Reds","Cleveland Guardians","Colorado Rockies","Detroit Tigers","Houston Astros","Kansas City Royals","Los Angeles Angels","Los Angeles Dodgers","Miami Marlins","Milwaukee Brewers","Minnesota Twins","New York Mets","New York Yankees","Athletics","Philadelphia Phillies","Pittsburgh Pirates","San Francisco Giants","Seattle Mariners","St. Louis Cardinals","Tampa Bay Rays","Texas Rangers","Toronto Blue Jays","Washington Nationals"];
+
+function initTrade() {
+  const sel = $("tradePlayer");
+  sel.innerHTML = state.players.map(p => "<option>" + esc(p.name) + "</option>").join("");
+  const teamSel = $("tradeTeam");
+  teamSel.innerHTML = MLB_TEAMS.map(t => "<option>" + esc(t) + "</option>").join("");
+  const recalc = () => {
+    const p = state.players.find(x => x.name === sel.value) || state.players[0];
+    if (!p) return;
+    const dpw = state.assumptions.dollarsPerWar;
+    const sal = FEED.salaryM(p);
+    const outWAR = MODELS.projWAR(p), outSur = MODELS.surplusM(p).value;
+    const inWAR = Number($("tradeSlider").value);
+    const inSur = +(inWAR * dpw * 0.55).toFixed(1);
+    $("tradeSlider").style.setProperty("--fill", (inWAR / 12 * 100) + "%");
+    $("tradeOutFigure").innerHTML =
+      esc(p.name) + " · " + esc(p.position) + "<br>proj WAR <b>" + fmt(outWAR) + "</b> · salary <b>" + money(sal.value) +
+      "</b> " + (sal.src === "live" ? "" : "<span style='color:var(--fb)'>(fallback)</span>") +
+      "<br>surplus <b>" + (outSur >= 0 ? "+" : "") + outSur + "M</b>";
+    $("tradeInFigure").innerHTML =
+      "package from " + esc(teamSel.value) + "<br>proj WAR <b>" + fmt(inWAR) + "</b> (cost-controlled @ 55% of $" +
+      dpw.toFixed(1) + "M/WAR)<br>surplus <b>+" + inSur + "M</b>";
+    const delta = +(inSur - outSur).toFixed(1);
+    const v = $("tradeVerdict");
+    let badge, text;
+    if (Math.abs(delta) <= 4) { badge = '<span class="badge fair">Balanced</span>'; text = "Surplus values within ±$4M — a defensible deal for both sides."; }
+    else if (delta > 4)       { badge = '<span class="badge win">SD wins value</span>'; text = "San Diego gains ~$" + Math.abs(delta) + "M in modeled surplus."; }
+    else                      { badge = '<span class="badge loss">SD gives value</span>'; text = "San Diego surrenders ~$" + Math.abs(delta) + "M in modeled surplus — increase the return."; }
+    v.innerHTML = badge + '<span>' + text + ' <span class="model-chip" data-prov="surplus">MODEL v0</span></span>';
+    updateChips(v);
+    $("tradeMeter").style.width = clamp(50 + delta * 2.4, 4, 96) + "%";
+  };
+  sel.onchange = recalc; teamSel.onchange = recalc;
+  $("tradeSlider").oninput = recalc;
+  state.tradeRecalc = recalc;
+  recalc();
+}
+
+/* ---------- 03 Pitch design lab ---------- */
+function renderStuffBoard() {
+  const staff = state.pitchers;
+  destroy("stuff");
+  if (!staff.length) return;
+  const rows = staff.map(p => ({ p, s: FEED.stuff(p) }));
+  state.charts.stuff = new Chart($("stuffChart"), {
+    type: "bar",
+    data: { labels: rows.map(r => r.p.name + (r.s.src === "live" ? "" : " *")), datasets: [
+      { label: "Stuff+",    data: rows.map(r => r.s.stuff),    backgroundColor: hexA(GOLD, .85), borderRadius: 3 },
+      { label: "Location+", data: rows.map(r => r.s.location), backgroundColor: hexA(SLATE, .7), borderRadius: 3 },
+    ]},
+    options: {
+      indexAxis: "y", responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: "bottom" },
+        tooltip: { callbacks: { afterBody: (items) => {
+          const r = rows[items[0].dataIndex];
+          return r.s.src === "live" ? "source: FanGraphs (nightly)" : "* " + r.s.why;
+        }}},
+      },
+      scales: {
+        x: { min: 80, max: 125, grid: { color: "rgba(255,255,255,0.05)" },
+             title: { display: true, text: "100 = league average · * = fallback value" } },
+        y: { ticks: { autoSkip: false, font: { size: 11 } } },
+      },
+    },
+  });
+}
+
+function initPitchLab() {
+  const sel = $("pitchPlayer");
+  sel.innerHTML = state.pitchers.map(p => "<option>" + esc(p.name) + "</option>").join("");
+  const typeSel = $("pitchType");
+  const fillTypes = () => {
+    const p = state.pitchers.find(x => x.name === sel.value) || state.pitchers[0];
+    const mix = (p && p.summary.pitch_mix) || {};
+    const types = Object.keys(mix).length ? Object.keys(mix) : ["FF", "SL"];
+    typeSel.innerHTML = types.map(t => "<option>" + esc(t) + "</option>").join("");
+  };
+  const redraw = () => {
+    const p = state.pitchers.find(x => x.name === sel.value) || state.pitchers[0];
+    if (!p) return;
+    const t = typeSel.value || "SL";
+    const inches = Number($("breakSlider").value);
+    $("breakSlider").style.setProperty("--fill", (inches / 4 * 100) + "%");
+    $("breakVal").textContent = "+" + inches.toFixed(1) + '"';
+    const base = MODELS.baseWhiff(p, t);
+    const xs = []; for (let i = 0; i <= 4.001; i += 0.2) xs.push(+i.toFixed(1));
+    const curve = xs.map(x => +(base + MODELS.whiffDelta(x)).toFixed(2));
+    const now = +(base + MODELS.whiffDelta(inches)).toFixed(1);
+    destroy("whiff");
+    state.charts.whiff = new Chart($("whiffChart"), {
+      type: "line",
+      data: { labels: xs, datasets: [
+        { label: "modeled whiff%", data: curve, borderColor: GOLD, backgroundColor: hexA(GOLD, .12),
+          fill: true, tension: .3, pointRadius: 0 },
+        { label: "current setting", data: xs.map(x => x === +inches.toFixed(1) ? now : null),
+          borderColor: WHITE, backgroundColor: WHITE, pointRadius: 5, showLine: false },
+      ]},
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { title: { display: true, text: "Added horizontal break (in)" }, ticks: { maxTicksLimit: 5 } },
+          y: { title: { display: true, text: "Whiff %" } },
+        },
+      },
+    });
+    const d = MODELS.whiffDelta(inches);
+    $("whiffReadout").innerHTML =
+      esc(p.name) + " · " + esc(t) + " → base whiff <b>" + fmt(base) + "%</b>, with +" + inches.toFixed(1) +
+      '" break: <b>' + fmt(now) + "%</b> (<span class='up'>+" + fmt(d, 2) + " pts</span>, modeled)";
+  };
+  sel.onchange = () => { fillTypes(); redraw(); };
+  typeSel.onchange = redraw;
+  $("breakSlider").oninput = redraw;
+  fillTypes(); redraw();
+}
+
+/* ---------- 04 Damage opportunity — Gameday 13-zone SVG ----------
+   Geometry (catcher's view): rulebook zones 1–9 as a 3×3 grid inside
+   the outer chase box; zones 11–14 are the four L-shaped outer
+   quadrants (11 upper-left, 12 upper-right, 13 lower-left, 14
+   lower-right). This numbering follows the pipeline's Gameday `zone`
+   field; verify orientation against Statcast documentation before
+   external presentation.                                             */
+const ZONE_GEOM = (() => {
+  const O = 20, OE = 280, I = 70, IE = 230, MID = 150;
+  const cw = (IE - I) / 3;
+  const cells = [];
+  let z = 1;
+  for (let r = 0; r < 3; r++)
+    for (let c = 0; c < 3; c++, z++)
+      cells.push({ zone: String(z), kind: "rect",
+                   x: I + c * cw, y: I + r * cw, w: cw, h: cw,
+                   lx: I + c * cw + cw / 2, ly: I + r * cw + cw / 2 });
+  cells.push({ zone: "11", kind: "path", lx: (O + I) / 2 + 8, ly: (O + I) / 2 + 4,
+    d: `M${O},${O} H${MID} V${I} H${I} V${MID} H${O} Z` });
+  cells.push({ zone: "12", kind: "path", lx: (IE + OE) / 2 - 8, ly: (O + I) / 2 + 4,
+    d: `M${MID},${O} H${OE} V${MID} H${IE} V${I} H${MID} Z` });
+  cells.push({ zone: "13", kind: "path", lx: (O + I) / 2 + 8, ly: (IE + OE) / 2 + 4,
+    d: `M${O},${MID} H${I} V${IE} H${MID} V${OE} H${O} Z` });
+  cells.push({ zone: "14", kind: "path", lx: (IE + OE) / 2 - 8, ly: (IE + OE) / 2 + 4,
+    d: `M${OE},${MID} V${OE} H${MID} V${IE} H${IE} V${MID} H${OE} Z` });
+  return cells;
+})();
+
+function zoneFill(gap) {
+  if (gap == null) return NOSAMPLE;
+  if (gap <= 0) return "#3A2D23";
+  const t = clamp(gap / 80, 0, 1);
+  return "rgb(" + Math.round(58 + t * 197) + "," + Math.round(45 + t * 151) + "," + Math.round(35 + t * 2) + ")";
+}
+
+function initDamage() {
+  const sel = $("damagePlayer");
+  sel.innerHTML = state.batters.map(p => "<option>" + esc(p.name) + "</option>").join("");
+  const draw = () => {
+    const p = state.batters.find(x => x.name === sel.value) || state.batters[0];
+    if (!p) return;
+    const cls = $("damagePitch").value;
+    const feed = FEED.zoneDamage(p, cls);
+    const block = feed || MODELS.damageZones_v0(p, cls);
+    state.prov.damage = feed ? feed.src : "model";      /* refresh chip state */
+    updateChips();
+
+    const svg = $("zoneSvg");
+    const NS = "http://www.w3.org/2000/svg";
+    svg.innerHTML = "";
+    let best = null;
+    const ZONE_DESC = { "1":"up-in","2":"up-mid","3":"up-away","4":"mid-in","5":"heart","6":"mid-away",
+                        "7":"low-in","8":"low-mid","9":"low-away",
+                        "11":"chase up-left","12":"chase up-right","13":"chase low-left","14":"chase low-right" };
+    for (const g of ZONE_GEOM) {
+      const cell = block.zones[g.zone] || { n: 0, gap_x1000: null };
+      const gap = cell.gap_x1000;
+      if (gap != null && (best == null || gap > best.gap)) best = { gap, zone: g.zone };
+      const shape = document.createElementNS(NS, g.kind === "rect" ? "rect" : "path");
+      if (g.kind === "rect") {
+        shape.setAttribute("x", g.x); shape.setAttribute("y", g.y);
+        shape.setAttribute("width", g.w); shape.setAttribute("height", g.h);
+      } else shape.setAttribute("d", g.d);
+      shape.setAttribute("fill", zoneFill(gap));
+      shape.setAttribute("stroke", "rgba(255,255,255,0.18)");
+      shape.setAttribute("stroke-width", "1");
+      shape.setAttribute("class", "zc");
+      shape.setAttribute("tabindex", "0");
+      bindTip(shape, () => {
+        const c = block.zones[g.zone] || {};
+        return "<span class='t'>" + esc(p.name) + "</span><br>zone " + g.zone + " · " + ZONE_DESC[g.zone] +
+          "<br>" + (c.gap_x1000 == null
+            ? "insufficient sample (n=" + (c.n ?? 0) + " &lt; " + state.assumptions.zoneMinN + " PA)"
+            : "gap " + (c.gap_x1000 > 0 ? "+" : "") + c.gap_x1000 +
+              " · xwOBA " + fmt(c.xwoba, 3) + " / wOBA " + fmt(c.woba, 3) + " · n=" + c.n) +
+          "<br>" + (feed ? (feed.src === "live" ? "Statcast (pipeline)" : "<span class='fb'>last-known grid</span>") : "Model v0 illustration");
+      });
+      svg.appendChild(shape);
+
+      const gapText = document.createElementNS(NS, "text");
+      gapText.setAttribute("x", g.lx); gapText.setAttribute("y", g.ly + 4);
+      gapText.setAttribute("text-anchor", "middle");
+      gapText.setAttribute("font-family", "'JetBrains Mono', monospace");
+      gapText.setAttribute("font-size", "11");
+      gapText.setAttribute("pointer-events", "none");
+      gapText.setAttribute("fill", gap != null && gap > 48 ? "#241C16" : "rgba(255,255,255,0.85)");
+      gapText.textContent = gap == null ? "n<" + state.assumptions.zoneMinN : (gap > 0 ? "+" + gap : String(gap));
+      svg.appendChild(gapText);
+
+      const zText = document.createElementNS(NS, "text");
+      zText.setAttribute("x", g.kind === "rect" ? g.x + 5 : g.lx - 14);
+      zText.setAttribute("y", g.kind === "rect" ? g.y + 13 : g.ly - 14);
+      zText.setAttribute("font-family", "'JetBrains Mono', monospace");
+      zText.setAttribute("font-size", "8");
+      zText.setAttribute("pointer-events", "none");
+      zText.setAttribute("fill", "rgba(255,255,255,0.4)");
+      zText.textContent = g.zone;
+      svg.appendChild(zText);
     }
-    return { name: p.name, byDate };
-  });
+    /* rulebook-zone outline on top */
+    const outline = document.createElementNS(NS, "rect");
+    outline.setAttribute("x", 70); outline.setAttribute("y", 70);
+    outline.setAttribute("width", 160); outline.setAttribute("height", 160);
+    outline.setAttribute("fill", "none");
+    outline.setAttribute("stroke", "rgba(255,255,255,0.35)");
+    outline.setAttribute("stroke-width", "1.5");
+    outline.setAttribute("pointer-events", "none");
+    svg.appendChild(outline);
 
-  const labels = Array.from(labelsSet).sort();
-  const datasets = [];
-  perPitcher.forEach((p, i) => {
-    const color = SERIES_COLORS[i % SERIES_COLORS.length];
-    datasets.push({
-      label: p.name + " · velo",
-      data: labels.map(d => { const g = p.byDate.get(d); return g && g.sn ? +(g.s / g.sn).toFixed(2) : null; }),
-      yAxisID: "velo", borderColor: color, backgroundColor: color,
-      tension: 0.3, spanGaps: true, pointRadius: 3,
-    });
-    datasets.push({
-      label: p.name + " · spin",
-      data: labels.map(d => { const g = p.byDate.get(d); return g && g.rn ? +(g.r / g.rn).toFixed(0) : null; }),
-      yAxisID: "spin", borderColor: hexA(color, 0.45), backgroundColor: hexA(color, 0.45),
-      borderDash: [5, 4], tension: 0.3, spanGaps: true, pointRadius: 2.5,
-    });
-  });
-
-  destroy("trend");
-  state.charts.trend = new Chart($("trendChart"), {
-    type: "line",
-    data: { labels, datasets },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      interaction: { mode: "index", intersect: false },
-      plugins: { legend: { position: "bottom" } },
-      scales: {
-        velo: { position: "left", title: { display: true, text: "Velocity (mph)" } },
-        spin: { position: "right", title: { display: true, text: "Spin (rpm)" }, grid: { drawOnChartArea: false } },
-        x: { ticks: { maxTicksLimit: 10 } },
-      },
-    },
-  });
+    $("zoneNote").textContent = best
+      ? p.name + "'s largest gap vs this pitch class is zone " + best.zone + " (" + ZONE_DESC[best.zone] +
+        ", +" + best.gap + "). A swing-decision or attack-angle plan targeting that band is the recommendation." +
+        (feed ? "" : " (Illustrative Model v0 values — no zone feed for this hitter.)")
+      : "No zone has a sufficient sample vs this pitch class yet.";
+  };
+  sel.onchange = draw; $("damagePitch").onchange = draw;
+  draw();
 }
 
-/* ---------- Radar comparison ---------- */
-const RADAR_AXES = [
-  { label: "Volume",         get: (p) => num(p.summary.pitches_seen != null ? p.summary.pitches_seen : p.summary.pitches_thrown) },
-  { label: "Power / Velo",   get: (p) => num(p.summary.avg_exit_velocity != null ? p.summary.avg_exit_velocity : p.summary.avg_velocity) },
-  { label: "Peak",           get: (p) => num(p.summary.max_exit_velocity != null ? p.summary.max_exit_velocity : p.summary.max_velocity) },
-  { label: "HR / K",         get: (p) => num(p.summary.home_runs != null ? p.summary.home_runs : p.summary.strikeouts) },
-  { label: "Contact / Spin", get: (p) => num(p.summary.batted_ball_events != null ? p.summary.batted_ball_events : p.summary.avg_spin_rate) },
+/* ---------- 05 Lineup optimizer ---------- */
+function initLineup() {
+  const nine = [...state.batters]
+    .sort((a, b) => (num(b.summary.pitches_seen) || 0) - (num(a.summary.pitches_seen) || 0))
+    .slice(0, 9);
+  state.lineup = [...nine]; state.lineupBase = [...nine];
+  drawLineup();
+  $("lineupBest").onclick = () => { state.lineup = MODELS.bestLineup(state.lineup, state.batters); drawLineup(); };
+  $("lineupReset").onclick = () => { state.lineup = [...state.lineupBase]; drawLineup(); };
+}
+
+function drawLineup() {
+  const list = $("lineupList");
+  list.innerHTML = "";
+  state.lineup.forEach((p, i) => {
+    const card = document.createElement("div");
+    card.className = "lineup-card"; card.draggable = true; card.dataset.idx = i;
+    card.setAttribute("role", "listitem");
+    card.innerHTML =
+      '<span class="slot">' + (i + 1) + "</span>" +
+      '<span class="who">' + esc(p.name) + '<span class="pos">' + esc(p.position) + "</span></span>" +
+      '<span class="oi">OI ' + MODELS.offenseIndex(p, state.batters) + "</span>";
+    card.addEventListener("dragstart", (e) => { card.classList.add("dragging"); e.dataTransfer.setData("text/plain", i); });
+    card.addEventListener("dragend", () => card.classList.remove("dragging"));
+    card.addEventListener("dragover", (e) => { e.preventDefault(); card.classList.add("drop-above"); });
+    card.addEventListener("dragleave", () => card.classList.remove("drop-above"));
+    card.addEventListener("drop", (e) => {
+      e.preventDefault(); card.classList.remove("drop-above");
+      const from = Number(e.dataTransfer.getData("text/plain")), to = i;
+      if (Number.isNaN(from) || from === to) return;
+      const [moved] = state.lineup.splice(from, 1);
+      state.lineup.splice(to, 0, moved);
+      drawLineup();
+    });
+    list.appendChild(card);
+  });
+  const rg = MODELS.lineupRuns(state.lineup, state.batters);
+  const bestRg = MODELS.lineupRuns(MODELS.bestLineup(state.lineup, state.batters), state.batters);
+  const baseRg = MODELS.lineupRuns(state.lineupBase, state.batters);
+  $("lineupRuns").textContent = rg.toFixed(2);
+  $("lineupCompare").innerHTML =
+    "vs default order: <b style='color:" + (rg >= baseRg ? "var(--good)" : "var(--bad)") + "'>" +
+    (rg - baseRg >= 0 ? "+" : "") + (rg - baseRg).toFixed(2) + "</b> R/G<br>" +
+    "model optimum: <b style='color:var(--gold)'>" + bestRg.toFixed(2) + "</b> R/G<br>" +
+    "≈ <b>" + (((rg - baseRg) * 162) >= 0 ? "+" : "") + ((rg - baseRg) * 162).toFixed(0) + "</b> runs / 162 (modeled)";
+}
+
+/* ---------- 06 Bullpen leverage ---------- */
+const SCENARIOS = [
+  { name: "9th · up 1 · heart of order due", li: 2.9, side: "R", note: "RHH-heavy pocket" },
+  { name: "8th · tied · runner on 2nd",      li: 2.4, side: "L", note: "LHH pinch threat" },
+  { name: "7th · up 2 · bases empty",        li: 1.6, side: "R", note: "bridge inning" },
+  { name: "9th · down 1 · keep it close",    li: 1.9, side: "L", note: "must hold" },
+  { name: "Extras · runner on 2nd (auto)",   li: 3.1, side: "R", note: "max leverage" },
 ];
 
-function renderRadarControls(data) {
-  const ps = playersList(data);
-  const selA = $("radarA"), selB = $("radarB");
-  const prevA = selA.value, prevB = selB.value;
-  const optionsHtml = ps.map(p => "<option>" + esc(p.name) + "</option>").join("");
-  selA.innerHTML = optionsHtml;
-  selB.innerHTML = optionsHtml;
-  if (ps.length) {
-    selA.value = ps.some(p => p.name === prevA) ? prevA : ps[0].name;
-    const bDefault = ps[1] ? ps[1].name : ps[0].name;
-    selB.value = (ps.some(p => p.name === prevB) && prevB !== selA.value) ? prevB : bDefault;
+function renderBullpen() {
+  const arms = state.pitchers.slice(0, 8);
+  const tbl = $("bullpenMatrix");
+  if (!arms.length) { tbl.innerHTML = ""; return; }
+  let html = "<thead><tr><th>Scenario</th>" +
+    arms.map(a => "<th>" + esc(a.name) + "</th>").join("") + "</tr></thead><tbody>";
+  for (const sc of SCENARIOS) {
+    const fits = arms.map(a => MODELS.leverageFit(a, sc));
+    const best = Math.max(...fits.map(f => f.value));
+    html += "<tr><td class='rowhead'>" + esc(sc.name) +
+      "<span class='li'>LI " + sc.li.toFixed(1) + " · " + esc(sc.note) + "</span></td>" +
+      fits.map((f, i) =>
+        "<td class='fit" + (f.value === best ? " best" : "") + "' data-arm='" + esc(arms[i].name) +
+        "' data-sc='" + esc(sc.name) + "' data-f='" + f.value + "' data-src='" + f.stuffSrc + "'>" + f.value + "</td>").join("") + "</tr>";
   }
-  selA.onchange = () => renderRadar(state.data);
-  selB.onchange = () => renderRadar(state.data);
-  renderRadar(data);
+  tbl.innerHTML = html + "</tbody>";
+  tbl.querySelectorAll("td.fit").forEach(td => bindTip(td, () =>
+    "<span class='t'>" + td.dataset.arm + "</span><br>" + td.dataset.sc +
+    "<br>fit " + td.dataset.f + " / 100 — Stuff+ (" +
+    (td.dataset.src === "live" ? "live" : "<span class='fb'>fallback</span>") +
+    ") · platoon · fatigue · LI (Model v0)"));
 }
 
-function renderRadar(data) {
-  const ps = playersList(data);
-  if (!ps.length) { destroy("radar"); return; }
-  const a = ps.find(p => p.name === $("radarA").value) || ps[0];
-  const b = ps.find(p => p.name === $("radarB").value) || ps[1] || ps[0];
+/* ---------- Executive summary ---------- */
+function renderExecBrief(data) {
+  const ps = state.players;
+  const byS = [...ps].sort((a, b) => MODELS.surplusM(b).value - MODELS.surplusM(a).value);
+  const bestAsset = byS[0], worstAsset = byS[byS.length - 1];
+  const staff = state.pitchers;
+  const byStuff = [...staff].sort((a, b) => FEED.stuff(b).stuff - FEED.stuff(a).stuff);
+  const bestArm = byStuff[0];
+  const st = findPadresRow(data?.team_stats?.standings_nl_west || []);
+  const nine = state.lineup.length ? state.lineup : state.batters.slice(0, 9);
+  const rgNow = nine.length ? MODELS.lineupRuns(nine, state.batters) : null;
+  const rgBest = nine.length ? MODELS.lineupRuns(MODELS.bestLineup(nine, state.batters), state.batters) : null;
+  const c = state.prov._counts || {};
 
-  // Scale each axis 0–100 against the max among all tracked players.
-  const maxima = RADAR_AXES.map(ax => {
-    const vals = ps.map(p => ax.get(p)).filter(v => v != null);
-    return vals.length ? Math.max.apply(null, vals) : 1;
-  });
-  const scale = (p) => RADAR_AXES.map((ax, i) => {
-    const v = ax.get(p);
-    return v == null || !maxima[i] ? 0 : Math.round((v / maxima[i]) * 100);
-  });
+  const li = [];
+  if (st.row) li.push("<li>Club sits <b>" + ordinal(st.rank) + "</b> in the NL West at " +
+    esc(String(st.row.W)) + "–" + esc(String(st.row.L)) + (st.row.GB && st.row.GB !== "--" ? ", " + esc(String(st.row.GB)) + " back" : ", leading the division") + ".</li>");
+  if (bestAsset) li.push("<li><b>" + esc(bestAsset.name) + "</b> is the roster's top asset at the sandbox rate — surplus " +
+    "<span class='mono'>+$" + MODELS.surplusM(bestAsset).value + "M</span> (salary " +
+    (FEED.salaryM(bestAsset).src === "live" ? "live" : "fallback") + ", WAR modeled).</li>");
+  if (worstAsset && MODELS.surplusM(worstAsset).value < 0) li.push("<li><b>" + esc(worstAsset.name) +
+    "</b> carries the largest negative surplus (<span class='mono'>$" + MODELS.surplusM(worstAsset).value + "M</span>) — flag for the trade simulator.</li>");
+  if (bestArm) li.push("<li><b>" + esc(bestArm.name) + "</b> grades as the staff's best pure stuff (" +
+    "<span class='mono'>Stuff+ " + FEED.stuff(bestArm).stuff + (FEED.stuff(bestArm).src === "live" ? ", FanGraphs" : ", fallback") +
+    "</span>); reserve for LI ≥ 2.4 spots per the leverage matrix.</li>");
+  if (rgNow != null && rgBest != null && rgBest - rgNow > 0.01) li.push("<li>Current batting order leaves " +
+    "<span class='mono'>" + ((rgBest - rgNow) * 162).toFixed(0) + " modeled runs / 162</span> on the table vs the optimizer's order.</li>");
+  li.push("<li>Feed coverage: <span class='mono'>" + c.salLive + "/" + c.salAny + " salaries · " +
+    c.stLive + "/" + c.stAny + " Stuff+ · " + c.zdLive + "/" + c.zdAny + " zone grids</span> live. " +
+    "Projected WAR, whiff response, lineup runs and leverage fit remain <b>Model v0</b> — not decision-grade.</li>");
 
-  const datasets = [
-    { label: a.name, data: scale(a), borderColor: GOLD, backgroundColor: hexA(GOLD, 0.18), pointBackgroundColor: GOLD },
-  ];
-  if (b && b.name !== a.name) {
-    datasets.push({ label: b.name, data: scale(b), borderColor: WHITE, backgroundColor: hexA(WHITE, 0.10), pointBackgroundColor: WHITE });
-  }
-
-  destroy("radar");
-  state.charts.radar = new Chart($("radarChart"), {
-    type: "radar",
-    data: { labels: RADAR_AXES.map(ax => ax.label), datasets },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { position: "bottom" } },
-      scales: { r: {
-        min: 0, max: 100, ticks: { display: false },
-        grid: { color: "rgba(255,255,255,0.08)" },
-        angleLines: { color: "rgba(255,196,37,0.12)" },
-        pointLabels: { color: SAND, font: { size: 11 } },
-      } },
-    },
-  });
+  $("execBrief").innerHTML =
+    "<h4>GM Briefing — " + new Date().toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" }) + "</h4>" +
+    "<ul>" + li.join("") + "</ul>" +
+    "<h4>Recommended actions</h4><ul>" +
+    "<li>Review the Value vs. Cost asset quadrant at $" + state.assumptions.dollarsPerWar.toFixed(1) + "M/WAR (adjust in the sandbox to stress-test).</li>" +
+    "<li>Run the break simulator with the pitching group on the top-two Stuff+ arms.</li>" +
+    "<li>Adopt the optimizer's top-four order for the next series and monitor.</li>" +
+    "</ul>";
 }
 
-/* ---------- Roster table ---------- */
-const ROSTER_COLS = [
-  { key: "name", label: "Player", numeric: false },
-  { key: "vol",  label: "Pitches", numeric: true,
-    get: p => num(p.summary.pitches_seen != null ? p.summary.pitches_seen : p.summary.pitches_thrown) },
-  { key: "avg",  label: "Avg EV / Velo", numeric: true,
-    get: p => num(p.summary.avg_exit_velocity != null ? p.summary.avg_exit_velocity : p.summary.avg_velocity) },
-  { key: "max",  label: "Max EV / Velo", numeric: true,
-    get: p => num(p.summary.max_exit_velocity != null ? p.summary.max_exit_velocity : p.summary.max_velocity) },
-  { key: "spin", label: "Avg Spin", numeric: true, get: p => num(p.summary.avg_spin_rate) },
-  { key: "hrk",  label: "HR / K", numeric: true,
-    get: p => num(p.summary.home_runs != null ? p.summary.home_runs : p.summary.strikeouts) },
-];
-
-function renderRoster(data) {
-  const ps = playersList(data);
-  const head = $("rosterHead");
-  head.innerHTML = ROSTER_COLS.map(c =>
-    '<th><button type="button" data-key="' + c.key + '">' + c.label +
-    ' <span class="arrow">' + (state.sort.key === c.key ? (state.sort.dir === 1 ? "▲" : "▼") : "") + "</span></button></th>"
-  ).join("");
-
-  head.querySelectorAll("button").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const key = btn.dataset.key;
-      state.sort.dir = state.sort.key === key ? -state.sort.dir : -1;
-      state.sort.key = key;
-      renderRoster(state.data);
-    });
-  });
-
-  const rows = ps.map(p => {
-    const cells = { name: p.name, role: p.role, position: p.position };
-    for (const c of ROSTER_COLS) if (c.get) cells[c.key] = c.get(p);
-    return cells;
-  });
-
-  if (state.sort.key) {
-    const k = state.sort.key, dir = state.sort.dir;
-    rows.sort((a, b) => {
-      if (k === "name") return String(a.name).localeCompare(String(b.name)) * dir;
-      const av = a[k] != null ? a[k] : -Infinity;
-      const bv = b[k] != null ? b[k] : -Infinity;
-      return (av - bv) * dir;
-    });
-  }
-
-  // Gold conditional formatting: best value per numeric column.
-  const best = {};
-  for (const c of ROSTER_COLS) if (c.numeric) {
-    const vals = rows.map(r => r[c.key]).filter(v => v != null);
-    best[c.key] = vals.length ? Math.max.apply(null, vals) : null;
-  }
-
-  $("rosterBody").innerHTML = rows.map(r =>
-    "<tr><td class=\"name\">" + esc(r.name) + '<span class="role-tag">' + esc(r.position || r.role) + "</span></td>" +
-    ROSTER_COLS.filter(c => c.numeric).map(c => {
-      const v = r[c.key];
-      const isTop = v != null && best[c.key] != null && v === best[c.key];
-      const cls = (isTop ? "top" : "") + (v == null ? " empty-cell" : "");
-      return '<td class="' + cls.trim() + '">' + (v == null ? "—" : formatCell(c.key, v)) + "</td>";
-    }).join("") + "</tr>"
-  ).join("");
-}
-
-const formatCell = (key, v) =>
-  (key === "vol" || key === "hrk" || key === "spin") ? Math.round(v).toLocaleString() : fmt(v, 1);
-
-/* ---------- misc ---------- */
-function destroy(name) {
-  if (state.charts[name]) { state.charts[name].destroy(); state.charts[name] = null; }
-}
-function hexA(hex, a) {
-  const h = hex.replace("#", "");
-  const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
-  return "rgba(" + r + "," + g + "," + b + "," + a + ")";
-}
-
-/* =========================================================================
-   Sample-data preview — clearly labeled, used only when the JSON is absent
-   (e.g. inside a chat preview). Mirrors the exact pipeline schema.
-   ========================================================================= */
-$("sampleBtn").addEventListener("click", () => {
-  state.data = makeSampleData();
-  state.isSample = true;
-  state.lastGeneratedAt = null;
-  $("sampleBanner").classList.add("show");
-  setStatus("", "Sample data (not live)");
-  renderAll(state.data);
+/* ------------------------------ 5. BOOT ------------------------------ */
+$("execToggle").addEventListener("click", () => {
+  const on = document.body.classList.toggle("exec-mode");
+  $("execToggle").setAttribute("aria-pressed", String(on));
 });
 
-function makeSampleData() {
-  const rng = mulberry32(20260705);
-  const days = [];
-  const start = new Date("2026-04-01T12:00:00Z");
-  for (let i = 0; i < 16; i++) {
-    const d = new Date(start.getTime() + i * 6 * 86400000);
-    days.push(d.toISOString().slice(0, 10));
-  }
-  const batterEvents = (bias) => days.flatMap(d =>
-    Array.from({ length: 6 }, () => ({
-      game_date: d,
-      launch_speed: +(78 + rng() * 38 + bias).toFixed(1),
-      launch_angle: +(-25 + rng() * 75).toFixed(1),
-      events: rng() > 0.9 ? "home_run" : rng() > 0.6 ? "single" : "field_out",
-    })));
-  const pitcherEvents = () => days.flatMap(d =>
-    Array.from({ length: 14 }, () => ({
-      game_date: d,
-      release_speed: +(92 + rng() * 6).toFixed(1),
-      release_spin_rate: Math.round(2200 + rng() * 500),
-      pitch_type: rng() > 0.5 ? "FF" : "SL",
-      events: rng() > 0.85 ? "strikeout" : null,
-    })));
-
-  const summarize = (evts, role) => role === "batter" ? {
-    pitches_seen: evts.length * 4,
-    batted_ball_events: evts.length,
-    avg_exit_velocity: +(evts.reduce((s, e) => s + e.launch_speed, 0) / evts.length).toFixed(2),
-    max_exit_velocity: +Math.max.apply(null, evts.map(e => e.launch_speed)).toFixed(2),
-    avg_launch_angle: 12.4,
-    home_runs: evts.filter(e => e.events === "home_run").length,
-  } : {
-    pitches_thrown: evts.length,
-    avg_velocity: +(evts.reduce((s, e) => s + e.release_speed, 0) / evts.length).toFixed(2),
-    max_velocity: +Math.max.apply(null, evts.map(e => e.release_speed)).toFixed(2),
-    avg_spin_rate: Math.round(evts.reduce((s, e) => s + e.release_spin_rate, 0) / evts.length),
-    strikeouts: evts.filter(e => e.events === "strikeout").length,
-    pitch_mix: { FF: 120, SL: 90 },
-  };
-
-  const mk = (name, role, position, bias) => {
-    const events = role === "batter" ? batterEvents(bias || 0) : pitcherEvents();
-    return [name, {
-      mlbam_id: 0,
-      position,
-      position_type: role === "pitcher" ? "Pitcher" : "Infielder",
-      roles: [role],
-      game_logs: {},
-      statcast: { [role]: { summary: summarize(events, role), events } },
-    }];
-  };
-
-  const deepDive = Object.fromEntries([
-    mk("Sample Batter A", "batter", "3B", 4),
-    mk("Sample Batter B", "batter", "SS", 0),
-    mk("Sample Pitcher C", "pitcher", "P"),
-  ]);
-
-  return {
-    meta: { team: "San Diego Padres", season: 2026, generated_at_utc: null, schema_version: 2, sources: ["sample generator"] },
-    team_stats: {
-      standings_nl_west: [
-        { Tm: "Sample Team One", W: 52, L: 34, "W-L%": 0.605, GB: "--" },
-        { Tm: "San Diego Padres", W: 49, L: 37, "W-L%": 0.570, GB: "3.0" },
-        { Tm: "Sample Team Three", W: 45, L: 41, "W-L%": 0.523, GB: "7.0" },
-        { Tm: "Sample Team Four", W: 40, L: 46, "W-L%": 0.465, GB: "12.0" },
-        { Tm: "Sample Team Five", W: 33, L: 53, "W-L%": 0.384, GB: "19.0" },
-      ],
-      batting: [{ Team: "SDP", R: 412, WAR: 15.2 }],
-      pitching: [{ Team: "SDP", R: 371, WAR: 9.8 }],
-    },
-    roster: Object.entries(deepDive).map(([name, p]) => ({
-      name, mlbam_id: p.mlbam_id, position: p.position,
-      position_type: p.position_type, jersey_number: null,
-      roles: p.roles, season_stats: {},
-    })),
-    player_deep_dive: deepDive,
-  };
+/* Sandbox: $/WAR edits re-price the whole dashboard instantly. */
+function applyAssumptions() {
+  syncSandboxUI();
+  if (!state.data) return;
+  renderKPIs(state.data);
+  renderValueChart();
+  if (state.tradeRecalc) state.tradeRecalc();
+  renderExecBrief(state.data);
+  updateChips();
 }
+$("dpwSlider").addEventListener("input", () => {
+  state.assumptions.dollarsPerWar = Number($("dpwSlider").value);
+  applyAssumptions();
+});
+$("dpwReset").addEventListener("click", () => {
+  state.assumptions.dollarsPerWar = state.assumptions.feedDollarsPerWar;
+  applyAssumptions();
+});
 
+$("refreshBtn").addEventListener("click", () => loadData(true));
+$("sampleBtn").addEventListener("click", loadSample);
+setInterval(() => loadData(false), REFRESH_MS);
+setInterval(() => {
+  const mins = Math.max(0, Math.round((state.nextRefreshAt - Date.now()) / 60000));
+  $("nextRefresh").textContent = mins <= 0 ? "soon" : mins + " min";
+}, 30 * 1000);
+
+const navLinks = Array.from(document.querySelectorAll(".rail nav a"));
+const io = new IntersectionObserver((entries) => {
+  entries.forEach(en => {
+    if (!en.isIntersecting) return;
+    navLinks.forEach(a => a.classList.toggle("active", a.getAttribute("href") === "#" + en.target.id));
+  });
+}, { rootMargin: "-30% 0px -60% 0px" });
+document.querySelectorAll("section.section").forEach(s => io.observe(s));
+
+/* =========================================================================
+   Sample data — schema v3, generated deterministically, loaded only when
+   padres_live_data.json is absent. Includes a demo analytics block and
+   zone_damage grids so every live code path is exercised; one pitcher is
+   intentionally left out of the Stuff+ feed to demonstrate the FALLBACK
+   chip. Always labeled by the Sample Data banner.
+   ========================================================================= */
 function mulberry32(seed) {
   return function () {
     let t = (seed += 0x6D2B79F5);
@@ -975,7 +1579,135 @@ function mulberry32(seed) {
   };
 }
 
-/* ---------- boot ---------- */
+function makeSampleData() {
+  const rng = mulberry32(20260706);
+  const days = [];
+  const start = new Date("2026-04-01T12:00:00Z");
+  for (let i = 0; i < 18; i++) days.push(new Date(start.getTime() + i * 5 * 86400000).toISOString().slice(0, 10));
+
+  const batterEvents = (bias) => days.flatMap(d => Array.from({ length: 6 }, () => ({
+    game_date: d,
+    launch_speed: +(78 + rng() * 38 + bias).toFixed(1),
+    launch_angle: +(-25 + rng() * 75).toFixed(1),
+    events: rng() > 0.9 ? "home_run" : rng() > 0.6 ? "single" : "field_out",
+  })));
+  const pitcherEvents = (velo) => days.flatMap(d => Array.from({ length: 13 }, () => ({
+    game_date: d,
+    release_speed: +(velo + rng() * 5).toFixed(1),
+    release_spin_rate: Math.round(2150 + rng() * 600),
+    pitch_type: ["FF", "SL", "CH", "SI"][Math.floor(rng() * 4)],
+    events: rng() > 0.85 ? "strikeout" : null,
+  })));
+  const sumB = (e) => ({
+    pitches_seen: e.length * 4, batted_ball_events: e.length,
+    avg_exit_velocity: +mean(e.map(x => x.launch_speed)).toFixed(2),
+    max_exit_velocity: +Math.max(...e.map(x => x.launch_speed)).toFixed(2),
+    avg_launch_angle: 12.4, hard_hit_events: e.filter(x => x.launch_speed >= 95).length,
+    home_runs: e.filter(x => x.events === "home_run").length,
+  });
+  const sumP = (e) => {
+    const mix = {};
+    e.forEach(x => { mix[x.pitch_type] = (mix[x.pitch_type] || 0) + 1; });
+    return {
+      pitches_thrown: e.length,
+      avg_velocity: +mean(e.map(x => x.release_speed)).toFixed(2),
+      max_velocity: +Math.max(...e.map(x => x.release_speed)).toFixed(2),
+      avg_spin_rate: Math.round(mean(e.map(x => x.release_spin_rate))),
+      strikeouts: e.filter(x => x.events === "strikeout").length,
+      pitch_mix: mix,
+    };
+  };
+  /* schema-v3 zone_damage: 13 Gameday zones per pitch class, with a few
+     deliberately under-sampled cells to exercise the gray state */
+  const CLASSES = ["ff_high", "sl_sweep", "ch_split", "cb", "si"];
+  const ZONES = ["1","2","3","4","5","6","7","8","9","11","12","13","14"];
+  const mkZones = (name) => {
+    const out = {};
+    for (const cls of CLASSES) {
+      const zones = {};
+      for (const z of ZONES) {
+        const raw = mulberry32(Math.floor(hash01("z" + name + cls + z) * 1e6))();
+        const n = Math.floor(raw * 26);                  /* some cells < 5 */
+        if (n < 5) zones[z] = { n, pitches: n * 4, woba: null, xwoba: null, gap_x1000: null };
+        else {
+          const woba = +(0.24 + raw * 0.2).toFixed(3);
+          const gap = Math.round((raw - 0.35) * 120);
+          zones[z] = { n, pitches: n * 4, woba, xwoba: +(woba + gap / 1000).toFixed(3), gap_x1000: gap };
+        }
+      }
+      out[cls] = { zones };
+    }
+    return out;
+  };
+
+  const mk = (name, role, position, id, arg) => {
+    const events = role === "batter" ? batterEvents(arg || 0) : pitcherEvents(arg || 92);
+    return [name, {
+      mlbam_id: id, position,
+      position_type: role === "pitcher" ? "Pitcher" : "Infielder",
+      roles: [role], game_logs: {},
+      statcast: { [role]: { summary: role === "batter" ? sumB(events) : sumP(events), events } },
+      ...(role === "batter" ? { zone_damage: mkZones(name) } : {}),
+    }];
+  };
+
+  const deepDive = Object.fromEntries([
+    mk("Demo 3B Alpha",   "batter", "3B", 9001, 6),
+    mk("Demo RF Bravo",   "batter", "RF", 9002, 4),
+    mk("Demo SS Charlie", "batter", "SS", 9003, 3),
+    mk("Demo 1B Delta",   "batter", "1B", 9004, 5),
+    mk("Demo CF Echo",    "batter", "CF", 9005, 1),
+    mk("Demo C Foxtrot",  "batter", "C",  9006, 0),
+    mk("Demo 2B Golf",    "batter", "2B", 9007, 2),
+    mk("Demo LF Hotel",   "batter", "LF", 9008, 1),
+    mk("Demo DH India",   "batter", "DH", 9009, 3),
+    mk("Demo SP Juliet",  "pitcher", "P", 9101, 94),
+    mk("Demo SP Kilo",    "pitcher", "P", 9102, 92),
+    mk("Demo RP Lima",    "pitcher", "P", 9103, 97),
+    mk("Demo RP Mike",    "pitcher", "P", 9104, 95),
+    mk("Demo RP November","pitcher", "P", 9105, 93),
+  ]);
+
+  const names = Object.keys(deepDive);
+  const salaries = {};
+  names.forEach((n, i) => { salaries[n] = Math.round((900000 + hash01("s" + n) * 24e6) / 1000) * 1000; });
+  const stuff = {};
+  for (const n of names.filter(n => deepDive[n].roles[0] === "pitcher")) {
+    if (n === "Demo RP November") continue;   /* left out → FALLBACK demo */
+    stuff[n] = { stuff_plus: +(94 + hash01("st" + n) * 22).toFixed(1),
+                 location_plus: +(93 + hash01("lo" + n) * 16).toFixed(1),
+                 pitching_plus: +(95 + hash01("pi" + n) * 18).toFixed(1) };
+  }
+
+  return {
+    meta: { team: "San Diego Padres", season: 2026, generated_at_utc: null, schema_version: 3, sources: ["sample generator"] },
+    team_stats: {
+      standings_nl_west: [
+        { Tm: "Sample Team One",   W: 53, L: 35, "W-L%": 0.602, GB: "--" },
+        { Tm: "San Diego Padres",  W: 50, L: 38, "W-L%": 0.568, GB: "3.0" },
+        { Tm: "Sample Team Three", W: 45, L: 43, "W-L%": 0.511, GB: "8.0" },
+        { Tm: "Sample Team Four",  W: 40, L: 48, "W-L%": 0.455, GB: "13.0" },
+        { Tm: "Sample Team Five",  W: 33, L: 55, "W-L%": 0.375, GB: "20.0" },
+      ],
+      batting:  [{ Team: "SDP", R: 428, WAR: 16.1 }],
+      pitching: [{ Team: "SDP", R: 379, WAR: 10.4 }],
+    },
+    roster: names.map(name => ({
+      name, mlbam_id: deepDive[name].mlbam_id, position: deepDive[name].position,
+      position_type: deepDive[name].position_type, jersey_number: null,
+      roles: deepDive[name].roles, season_stats: {},
+    })),
+    player_deep_dive: deepDive,
+    analytics: {
+      salaries: { source: "sample generator", as_of: null, stale: false, players: salaries },
+      pitching_models: { source: "sample generator", as_of: null, stale: false, players: stuff },
+      assumptions: { dollars_per_war_musd: 8.0, high_spin_ff_rpm: 2400, zone_min_denominator: 5 },
+    },
+  };
+}
+
+/* boot */
+updateChips(document);
 loadData(false);
 </script>
 </body>

@@ -3,17 +3,14 @@ name: Update Padres Dashboard Data
 on:
   schedule:
     # GitHub Actions cron runs in UTC only.
-    # 11:30 PM Pacific Daylight Time (UTC-7, mid-March to early Nov,
-    # i.e. essentially the whole baseball season) = 06:30 UTC next day.
+    # 11:30 PM Pacific Daylight Time (UTC-7) = 06:30 UTC next day.
     - cron: "30 6 * * *"
-    # 11:30 PM Pacific Standard Time (UTC-8, winter) = 07:30 UTC.
-    # Uncomment the line below in November and comment the one above,
-    # or leave both enabled and accept one extra (harmless) run per day:
+    # 11:30 PM PST (winter) = 07:30 UTC — uncomment in November:
     # - cron: "30 7 * * *"
-  workflow_dispatch: {}   # allows manual "Run workflow" button for testing
+  workflow_dispatch: {}
 
 permissions:
-  contents: write         # required so the job can commit the JSON back
+  contents: write
 
 concurrency:
   group: padres-data-update
@@ -22,10 +19,14 @@ concurrency:
 jobs:
   update-data:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45   # raised: Stuff+ tiers + salary scrape add time
 
     steps:
       - name: Check out repository
+        # IMPORTANT: the checkout brings the previously committed
+        # padres_live_data.json into the workspace — that file IS the
+        # "last known good" store the v3 pipeline falls back to when a
+        # scrape fails. Do not delete it before running the script.
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -39,6 +40,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Install Playwright browser (tier-3 FanGraphs fallback only)
+        # Adds ~1-2 min. Safe to remove if tiers 1-2 prove reliable;
+        # the script skips tier 3 automatically when Chromium is absent.
+        run: python -m playwright install --with-deps chromium
+
       - name: Run the data pipeline
         run: python update_padres_stats.py
 
@@ -47,7 +53,6 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add padres_live_data.json
-          # Only commit if the file actually changed (avoids empty-commit errors)
           if git diff --cached --quiet; then
             echo "No data changes tonight — nothing to commit."
           else
